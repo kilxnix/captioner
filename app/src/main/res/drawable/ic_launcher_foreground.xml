@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cole's Log: a soft-serve swirl resting on a piece of notepaper.
+     Drawn in the standard 108dp adaptive-icon canvas; everything important
+     stays inside the 66dp safe-zone in the center. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Page drop-shadow (soft) -->
+    <path
+        android:fillColor="#00000022"
+        android:pathData="M24,26 L86,26 L86,82 L72,94 L24,94 Z" />
+
+    <!-- The piece of paper (slight off-white) -->
+    <path
+        android:fillColor="#FAFAF5"
+        android:pathData="M22,22 L86,22 L86,78 L72,92 L22,92 Z" />
+
+    <!-- Folded bottom-right corner — darker triangle suggests the tuck -->
+    <path
+        android:fillColor="#C8C3B0"
+        android:pathData="M72,78 L86,78 L72,92 Z" />
+
+    <!-- Ruled lines on the paper -->
+    <path
+        android:fillColor="#D8D2BD"
+        android:pathData="M30,38 L78,38 L78,39.5 L30,39.5 Z" />
+    <path
+        android:fillColor="#D8D2BD"
+        android:pathData="M30,46 L78,46 L78,47.5 L30,47.5 Z" />
+    <path
+        android:fillColor="#D8D2BD"
+        android:pathData="M30,83 L66,83 L66,84.5 L30,84.5 Z" />
+
+    <!-- Red margin line on the left -->
+    <path
+        android:fillColor="#E07A7A"
+        android:pathData="M34,26 L35,26 L35,90 L34,90 Z" />
+
+    <!-- Shadow under the turd -->
+    <path
+        android:fillColor="#00000033"
+        android:pathData="M32,78 C32,82 40,84 54,84 C68,84 76,82 76,78 C76,74 68,73 54,73 C40,73 32,74 32,78 Z" />
+
+    <!-- Turd layer 1 (base, widest) -->
+    <path
+        android:fillColor="#4E2B12"
+        android:pathData="M30,74 C30,80 40,82 54,82 C68,82 78,80 78,74 C78,68 68,66 54,66 C40,66 30,68 30,74 Z" />
+
+    <!-- Turd layer 2 (mid) -->
+    <path
+        android:fillColor="#7A4A25"
+        android:pathData="M36,66 C36,70 44,72 54,72 C64,72 72,70 72,66 C72,62 64,60 54,60 C44,60 36,62 36,66 Z" />
+
+    <!-- Turd layer 3 (upper) -->
+    <path
+        android:fillColor="#94592E"
+        android:pathData="M42,60 C42,63 48,64 54,64 C60,64 66,63 66,60 C66,57 60,55 54,55 C48,55 42,57 42,60 Z" />
+
+    <!-- Tip — pointy top with a small twist to the right -->
+    <path
+        android:fillColor="#AC6D3C"
+        android:pathData="M48,55 C48,57 51,57.5 54,57.5 C58,57.5 61,56 61,54.5 C61,52 58,49 55,47 C52,49 48,52 48,55 Z" />
+
+    <!-- Highlight on the left of the mid layer for volume -->
+    <path
+        android:fillColor="#FFFFFF22"
+        android:pathData="M38,64 C38,66 41,67 46,67 C48,67 48,64 46,63.5 C42,63 38,63 38,64 Z" />
+
+    <!-- Stink wisp 1 -->
+    <path
+        android:fillColor="#6B7280"
+        android:strokeColor="#6B7280"
+        android:strokeWidth="2"
+        android:pathData="M44,44 C42,40 48,36 46,32 C44,28 50,24 48,20" />
+
+    <!-- Stink wisp 2 -->
+    <path
+        android:fillColor="#6B7280"
+        android:strokeColor="#6B7280"
+        android:strokeWidth="2"
+        android:pathData="M64,44 C66,40 60,36 62,32 C64,28 58,24 60,20" />
+</vector>
