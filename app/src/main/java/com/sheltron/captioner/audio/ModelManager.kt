@@ -14,10 +14,9 @@ import java.util.zip.ZipInputStream
 
 object ModelManager {
 
-    const val MODEL_NAME = "vosk-model-small-en-us-0.15"
+    const val MODEL_NAME = "vosk-model-en-us-0.22-lgraph"
     private val MODEL_URLS = listOf(
-        "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-        "https://github.com/alphacep/vosk-api/releases/download/v0.3.30/vosk-model-small-en-us-0.15.zip"
+        "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip"
     )
     private const val USER_AGENT = "ColesLog/1.0 (Android)"
     private const val MAX_REDIRECTS = 5

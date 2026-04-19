@@ -156,7 +156,7 @@ fun HomeScreen(
                     )
                     modelState is CaptionerViewModel.ModelState.Unknown -> ModelBlock(
                         title = "Voice model needed",
-                        body = "~40 MB one-time download. Runs fully offline afterward.",
+                        body = "~130 MB one-time download. Runs fully offline afterward.",
                         cta = "Download model",
                         onClick = { vm.downloadModel() }
                     )
