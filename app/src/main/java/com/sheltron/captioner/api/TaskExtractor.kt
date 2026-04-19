@@ -40,20 +40,24 @@ Transcript:
         context: Context,
         lines: List<Line>,
         sessionId: Long,
-        now: Long = System.currentTimeMillis()
+        now: Long = System.currentTimeMillis(),
+        onPhase: (String) -> Unit = {}
     ): Result {
         if (lines.isEmpty()) return Result.Ok(emptyList())
 
+        onPhase("Preparing prompt")
         val transcript = lines.joinToString("\n") { "[${formatOffset(it.offsetMs)}] ${it.text}" }
         val prompt = INSTRUCTIONS
             .replace("%TODAY%", isoDate(now))
-            .replace("%TRANSCRIPT%", transcript.take(6000)) // keep prompt size bounded for small model
+            .replace("%TRANSCRIPT%", transcript.take(6000))
 
-        return when (val r = GemmaClient.generate(context, prompt)) {
-            is GemmaClient.Result.Ok -> parseTasks(r.text, lines, sessionId, now)
+        return when (val r = GemmaClient.generate(context, prompt, onPhase = onPhase)) {
+            is GemmaClient.Result.Ok -> {
+                onPhase("Parsing response")
+                parseTasks(r.text, lines, sessionId, now)
+            }
             is GemmaClient.Result.Failed -> {
-                // Fall back to a tiny heuristic so we still produce something useful
-                // on devices where the model download failed or isn't present yet.
+                onPhase("Running fallback extractor")
                 val heuristic = HeuristicExtractor.extract(lines, sessionId, now)
                 if (heuristic.isNotEmpty()) Result.Ok(heuristic)
                 else Result.Failed(r.message)

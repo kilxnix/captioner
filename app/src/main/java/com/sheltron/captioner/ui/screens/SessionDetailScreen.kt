@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -156,19 +157,24 @@ fun SessionDetailScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Outlined.AutoAwesome, null, tint = Accent,
-                     modifier = Modifier.size(22.dp))
+                if (extractionState is CaptionerViewModel.ExtractionState.Running) {
+                    CircularProgressIndicator(color = Accent, strokeWidth = 2.dp,
+                        modifier = Modifier.size(22.dp))
+                } else {
+                    Icon(Icons.Outlined.AutoAwesome, null, tint = Accent,
+                         modifier = Modifier.size(22.dp))
+                }
                 Spacer(Modifier.size(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     val (title, sub) = when (val s = extractionState) {
                         is CaptionerViewModel.ExtractionState.Running ->
-                            "Extracting tasks…" to "Running Gemini Nano on-device."
+                            "Extracting tasks…" to "${s.phase}…"
                         is CaptionerViewModel.ExtractionState.Done ->
                             (if (s.count == 0) "No tasks found" else "Extracted ${s.count} task${if (s.count == 1) "" else "s"}") to "Swipe to Tasks to review."
                         is CaptionerViewModel.ExtractionState.Failed ->
                             "Extraction failed" to s.message
                         else ->
-                            "Extract tasks" to "Pull actionable items from this transcript (Gemini Nano, on-device)."
+                            "Extract tasks" to "Pull actionable items from this transcript (Gemma, on-device)."
                     }
                     Text(title, style = MaterialTheme.typography.titleSmall,
                          color = MaterialTheme.colorScheme.onSurface,

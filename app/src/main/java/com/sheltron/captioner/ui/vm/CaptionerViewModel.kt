@@ -47,7 +47,7 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
 
     sealed class ExtractionState {
         object Idle : ExtractionState()
-        object Running : ExtractionState()
+        data class Running(val phase: String) : ExtractionState()
         data class Done(val count: Int) : ExtractionState()
         data class Failed(val message: String) : ExtractionState()
     }
@@ -110,16 +110,22 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun extractTasks(sessionId: Long) {
         if (_extractionState.value is ExtractionState.Running) return
-        _extractionState.value = ExtractionState.Running
+        _extractionState.value = ExtractionState.Running("Reading transcript")
         viewModelScope.launch {
             val lines = repo.linesForOnce(sessionId)
             if (lines.isEmpty()) {
                 _extractionState.value = ExtractionState.Failed("Transcript is empty.")
                 return@launch
             }
-            when (val r = TaskExtractor.extract(getApplication(), lines, sessionId)) {
+            val phaseUpdater: (String) -> Unit = { phase ->
+                _extractionState.value = ExtractionState.Running(phase)
+            }
+            when (val r = TaskExtractor.extract(getApplication(), lines, sessionId, onPhase = phaseUpdater)) {
                 is TaskExtractor.Result.Ok -> {
-                    if (r.tasks.isNotEmpty()) repo.insertTasks(r.tasks)
+                    if (r.tasks.isNotEmpty()) {
+                        _extractionState.value = ExtractionState.Running("Saving ${r.tasks.size} tasks")
+                        repo.insertTasks(r.tasks)
+                    }
                     _extractionState.value = ExtractionState.Done(r.tasks.size)
                 }
                 is TaskExtractor.Result.Failed -> {

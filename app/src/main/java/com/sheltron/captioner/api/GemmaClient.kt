@@ -18,7 +18,12 @@ object GemmaClient {
         data class Failed(val message: String) : Result()
     }
 
-    suspend fun generate(context: Context, prompt: String, maxTokens: Int = 2000): Result =
+    suspend fun generate(
+        context: Context,
+        prompt: String,
+        maxTokens: Int = 2000,
+        onPhase: (String) -> Unit = {}
+    ): Result =
         withContext(Dispatchers.Default) {
             if (!GemmaModelManager.isReady(context)) {
                 return@withContext Result.Failed("Gemma model not downloaded yet. Open Settings → Task extraction model.")
@@ -27,11 +32,14 @@ object GemmaClient {
             val modelPath = GemmaModelManager.modelFile(context).absolutePath
             var llm: LlmInference? = null
             try {
+                onPhase("Loading Gemma (~15 s)")
                 val options = LlmInference.LlmInferenceOptions.builder()
                     .setModelPath(modelPath)
                     .setMaxTokens(maxTokens)
                     .build()
                 llm = LlmInference.createFromOptions(context, options)
+
+                onPhase("Running Gemma on-device")
                 val response = llm.generateResponse(prompt)?.trim().orEmpty()
                 if (response.isEmpty()) Result.Failed("Model returned empty response")
                 else Result.Ok(response)
