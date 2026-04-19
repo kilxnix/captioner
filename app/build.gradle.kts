@@ -86,7 +86,7 @@ android {
     }
 }
 
-// Clone whisper.cpp into app/src/main/cpp/whisper.cpp/ before the native build.
+// Clone whisper.cpp into app/src/main/cpp/whisper.cpp/ before the native build runs.
 val cloneWhisperCpp by tasks.registering(Exec::class) {
     val dest = project.file("src/main/cpp/whisper.cpp")
     outputs.dir(dest)
@@ -100,10 +100,9 @@ val cloneWhisperCpp by tasks.registering(Exec::class) {
     )
 }
 
-tasks.configureEach {
-    if (name.startsWith("externalNativeBuild") || name.startsWith("generateJsonModel")) {
-        dependsOn(cloneWhisperCpp)
-    }
+// preBuild runs before any CMake configure / native task — plumb the clone through it.
+tasks.named("preBuild") {
+    dependsOn(cloneWhisperCpp)
 }
 
 dependencies {
