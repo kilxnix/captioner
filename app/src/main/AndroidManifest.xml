@@ -20,6 +20,10 @@
         </intent>
     </queries>
 
+    <!-- AICore ships with minSdk 31; we keep our app installable on API 26+ and gate
+         Nano calls at runtime with SDK checks. -->
+    <uses-sdk tools:overrideLibrary="com.google.ai.edge.aicore" />
+
     <application
         android:name=".CaptionerApp"
         android:allowBackup="true"

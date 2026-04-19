@@ -1,6 +1,8 @@
 package com.sheltron.captioner.api
 
 import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.google.ai.edge.aicore.DownloadCallback
 import com.google.ai.edge.aicore.DownloadConfig
 import com.google.ai.edge.aicore.GenerativeModel
@@ -21,6 +23,14 @@ object NanoClient {
     }
 
     suspend fun generate(context: Context, prompt: String, maxTokens: Int = 2000): Result {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return Result.Failed("Gemini Nano needs Android 12+. This device is too old; using fallback extractor.")
+        }
+        return generateImpl(context, prompt, maxTokens)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private suspend fun generateImpl(context: Context, prompt: String, maxTokens: Int): Result {
         val model = try {
             val config = generationConfig {
                 this.context = context
