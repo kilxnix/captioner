@@ -6,12 +6,15 @@ import com.sheltron.captioner.data.db.Line
 import com.sheltron.captioner.data.db.LineDao
 import com.sheltron.captioner.data.db.Session
 import com.sheltron.captioner.data.db.SessionDao
+import com.sheltron.captioner.data.db.Task
+import com.sheltron.captioner.data.db.TaskDao
 import kotlinx.coroutines.flow.Flow
 
 class Repository(
     private val context: Context,
     private val sessionDao: SessionDao,
-    private val lineDao: LineDao
+    private val lineDao: LineDao,
+    private val taskDao: TaskDao
 ) {
     fun allSessions(): Flow<List<Session>> = sessionDao.all()
 
@@ -35,7 +38,9 @@ class Repository(
         lineDao.insert(Line(sessionId = sessionId, offsetMs = offsetMs, text = text))
     }
 
+    /** Deleting a session detaches its tasks (sets sourceSessionId=null) — tasks persist. */
     suspend fun deleteSession(id: Long) {
+        taskDao.detachFromSession(id)
         sessionDao.delete(id)
         try { AudioPaths.sessionAudio(context, id).delete() } catch (_: Exception) {}
     }
@@ -43,4 +48,12 @@ class Repository(
     suspend fun lineCount(sessionId: Long): Int = lineDao.countForSession(sessionId)
 
     fun audioFileFor(sessionId: Long) = AudioPaths.sessionAudio(context, sessionId)
+
+    // Tasks
+    fun allTasks(): Flow<List<Task>> = taskDao.all()
+    fun tasksForSession(sessionId: Long): Flow<List<Task>> = taskDao.forSession(sessionId)
+    suspend fun countTasksForSession(sessionId: Long): Int = taskDao.countForSession(sessionId)
+    suspend fun insertTasks(tasks: List<Task>) { taskDao.insertAll(tasks) }
+    suspend fun setTaskDone(id: Long, done: Boolean) { taskDao.setDone(id, done) }
+    suspend fun deleteTask(id: Long) { taskDao.delete(id) }
 }

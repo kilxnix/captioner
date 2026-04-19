@@ -2,6 +2,7 @@ package com.sheltron.captioner.ui.screens
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -60,10 +63,14 @@ import java.util.Locale
 fun SessionDetailScreen(
     vm: CaptionerViewModel,
     sessionId: Long,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenTasks: () -> Unit = {},
+    onOpenSettings: () -> Unit = {}
 ) {
     val lines by vm.linesFor(sessionId).collectAsState(initial = emptyList())
     val session by vm.sessionFlow(sessionId).collectAsState(initial = null)
+    val sessionTasks by vm.tasksForSession(sessionId).collectAsState(initial = emptyList())
+    val extractionState by vm.extractionState.collectAsState()
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
 
@@ -131,6 +138,48 @@ fun SessionDetailScreen(
             }
             IconButton(onClick = { confirmDelete = true }) {
                 Icon(Icons.Outlined.DeleteOutline, null, tint = Accent)
+            }
+        }
+
+        // Extract tasks action row
+        Surface(
+            color = InkRaised,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .clickable(enabled = extractionState !is CaptionerViewModel.ExtractionState.Running) {
+                    vm.extractTasks(sessionId)
+                }
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.AutoAwesome, null, tint = Accent,
+                     modifier = Modifier.size(22.dp))
+                Spacer(Modifier.size(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    val (title, sub) = when (val s = extractionState) {
+                        is CaptionerViewModel.ExtractionState.Running ->
+                            "Extracting tasks…" to "Asking Claude to read the transcript."
+                        is CaptionerViewModel.ExtractionState.Done ->
+                            (if (s.count == 0) "No tasks found" else "Extracted ${s.count} task${if (s.count == 1) "" else "s"}") to "Swipe to Tasks to review."
+                        is CaptionerViewModel.ExtractionState.Failed ->
+                            "Extraction failed" to s.message
+                        else ->
+                            "Extract tasks" to "Send this transcript to Claude and pull actionable items."
+                    }
+                    Text(title, style = MaterialTheme.typography.titleSmall,
+                         color = MaterialTheme.colorScheme.onSurface,
+                         fontWeight = FontWeight.SemiBold)
+                    Text(sub, style = MaterialTheme.typography.bodySmall, color = BoneMuted)
+                }
+                if (sessionTasks.isNotEmpty()) {
+                    IconButton(onClick = onOpenTasks) {
+                        Icon(Icons.Outlined.Checklist, null, tint = Accent)
+                    }
+                }
             }
         }
 

@@ -31,10 +31,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.FiberManualRecord
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -69,7 +71,9 @@ import java.util.Locale
 fun HomeScreen(
     vm: CaptionerViewModel,
     onStart: () -> Unit,
-    onOpenSession: (Long) -> Unit
+    onOpenSession: (Long) -> Unit,
+    onOpenSettings: () -> Unit = {},
+    onOpenTasks: () -> Unit = {}
 ) {
     val sessions by vm.sessions.collectAsState()
     val modelState by vm.modelState.collectAsState()
@@ -113,18 +117,33 @@ fun HomeScreen(
             .background(MaterialTheme.colorScheme.background)
             .padding(top = topInset.calculateTopPadding())
     ) {
-        Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
-            Text(
-                "Cole's Log",
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                "Local voice → text. Everything stays on device.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = BoneMuted
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Cole's Log",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "Local voice → text. Swipe left for tasks.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = BoneMuted
+                )
+            }
+            androidx.compose.material3.IconButton(onClick = onOpenTasks) {
+                Icon(Icons.Outlined.Checklist, null,
+                     tint = MaterialTheme.colorScheme.onBackground)
+            }
+            androidx.compose.material3.IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Outlined.Settings, null,
+                     tint = MaterialTheme.colorScheme.onBackground)
+            }
         }
 
         // Primary action card

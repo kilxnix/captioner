@@ -89,6 +89,9 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
+    // Encrypted preferences for API key storage
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     // Vosk speech recognition
     implementation("com.alphacephei:vosk-android:0.3.47@aar")
     implementation("net.java.dev.jna:jna:5.13.0@aar")
