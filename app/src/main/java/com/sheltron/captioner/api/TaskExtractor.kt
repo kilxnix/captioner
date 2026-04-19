@@ -55,12 +55,20 @@ Rules:
         }
     }
 
-    private fun apiErrorMessage(code: Int, body: String): String = when (code) {
-        401 -> "Invalid API key. Check Settings."
-        429 -> "Rate limited. Try again in a moment."
-        529 -> "Anthropic is overloaded. Try again."
-        in 500..599 -> "Anthropic server error ($code). Try again."
-        else -> "API error $code: ${body.take(200)}"
+    private fun apiErrorMessage(code: Int, body: String): String {
+        // Anthropic returns {"type":"error","error":{"type":"...","message":"..."}}
+        val detail = try {
+            JSONObject(body).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
+        } catch (_: Throwable) { null }
+
+        return when (code) {
+            401 -> "Invalid API key. Check Settings."
+            429 -> "Rate limited. Try again in a moment."
+            529 -> "Anthropic is overloaded. Try again."
+            in 500..599 -> "Anthropic server error ($code). ${detail ?: "Try again."}"
+            400 -> detail ?: "Bad request ($code)."  // low credits / invalid model / etc. land here
+            else -> detail?.let { "$it ($code)" } ?: "API error $code: ${body.take(200)}"
+        }
     }
 
     private fun parseTasks(raw: String, lines: List<Line>, sessionId: Long, now: Long): Result {

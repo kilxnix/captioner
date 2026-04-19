@@ -14,6 +14,12 @@
         android:name="android.hardware.microphone"
         android:required="true" />
 
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".CaptionerApp"
         android:allowBackup="true"

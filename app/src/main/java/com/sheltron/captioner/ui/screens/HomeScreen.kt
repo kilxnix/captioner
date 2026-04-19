@@ -79,6 +79,8 @@ fun HomeScreen(
     val modelState by vm.modelState.collectAsState()
     val serviceState by vm.serviceState.collectAsState()
     val context = LocalContext.current
+    val engine = vm.settings.engine
+    val needsVoskModel = engine == com.sheltron.captioner.settings.SettingsStore.Engine.VOSK
 
     var micGranted by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(
         androidx.core.content.ContextCompat.checkSelfPermission(
@@ -173,20 +175,20 @@ fun HomeScreen(
                         cta = "Grant notifications",
                         onClick = { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
                     )
-                    modelState is CaptionerViewModel.ModelState.Unknown -> ModelBlock(
+                    needsVoskModel && modelState is CaptionerViewModel.ModelState.Unknown -> ModelBlock(
                         title = "Voice model needed",
                         body = "~130 MB one-time download. Runs fully offline afterward.",
                         cta = "Download model",
                         onClick = { vm.downloadModel() }
                     )
-                    modelState is CaptionerViewModel.ModelState.Downloading -> {
+                    needsVoskModel && modelState is CaptionerViewModel.ModelState.Downloading -> {
                         val pct = (modelState as CaptionerViewModel.ModelState.Downloading).percent
                         ModelProgress(label = "Downloading model", percent = pct)
                     }
-                    modelState is CaptionerViewModel.ModelState.Extracting -> {
+                    needsVoskModel && modelState is CaptionerViewModel.ModelState.Extracting -> {
                         ModelProgress(label = "Extracting model", percent = null)
                     }
-                    modelState is CaptionerViewModel.ModelState.Failed -> ModelBlock(
+                    needsVoskModel && modelState is CaptionerViewModel.ModelState.Failed -> ModelBlock(
                         title = "Download failed",
                         body = (modelState as CaptionerViewModel.ModelState.Failed).message,
                         cta = "Retry",

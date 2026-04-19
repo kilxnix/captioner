@@ -57,6 +57,7 @@ fun SettingsScreen(
     var apiKey by remember { mutableStateOf(store.apiKey ?: "") }
     var showKey by remember { mutableStateOf(false) }
     var selectedModel by remember { mutableStateOf(store.model) }
+    var selectedEngine by remember { mutableStateOf(store.engine) }
     var savedHint by remember { mutableStateOf(false) }
 
     Column(
@@ -85,6 +86,38 @@ fun SettingsScreen(
             modifier = Modifier.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Surface(
+                color = InkRaised,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Transcription engine",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "Which engine turns your voice into captions.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BoneMuted,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+                    )
+                    SettingsStore.Engine.entries.forEach { eng ->
+                        EngineOption(
+                            display = eng.display,
+                            note = eng.note,
+                            selected = eng == selectedEngine,
+                            onClick = {
+                                selectedEngine = eng
+                                store.engine = eng
+                            }
+                        )
+                        if (eng != SettingsStore.Engine.entries.last()) Spacer(Modifier.height(6.dp))
+                    }
+                }
+            }
+
             Surface(
                 color = InkRaised,
                 shape = RoundedCornerShape(16.dp),
@@ -168,6 +201,40 @@ fun SettingsScreen(
                         color = BoneDim
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EngineOption(display: String, note: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (selected) InkElevated else Color.Transparent,
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    display,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BoneMuted,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            if (selected) {
+                Icon(Icons.Outlined.Check, null, tint = Accent,
+                     modifier = Modifier.size(18.dp).padding(top = 2.dp))
             }
         }
     }

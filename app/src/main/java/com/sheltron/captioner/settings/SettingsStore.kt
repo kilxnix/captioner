@@ -21,6 +21,17 @@ class SettingsStore(context: Context) {
         }
     }
 
+    enum class Engine(val id: String, val display: String, val note: String) {
+        ON_DEVICE("on_device", "On-device (Google, Android 12+)",
+            "Best caption quality. Audio file not saved this session."),
+        VOSK("vosk", "Offline Vosk (with audio recording)",
+            "Weaker captions, but saves audio for playback.");
+
+        companion object {
+            fun fromId(id: String?): Engine = entries.firstOrNull { it.id == id } ?: ON_DEVICE
+        }
+    }
+
     private val prefs: SharedPreferences = try {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -44,10 +55,15 @@ class SettingsStore(context: Context) {
         get() = Model.fromId(prefs.getString(KEY_MODEL, null))
         set(value) { prefs.edit().putString(KEY_MODEL, value.id).apply() }
 
+    var engine: Engine
+        get() = Engine.fromId(prefs.getString(KEY_ENGINE, null))
+        set(value) { prefs.edit().putString(KEY_ENGINE, value.id).apply() }
+
     fun hasApiKey(): Boolean = !apiKey.isNullOrBlank()
 
     companion object {
         private const val KEY_API = "anthropic_api_key"
         private const val KEY_MODEL = "anthropic_model"
+        private const val KEY_ENGINE = "transcription_engine"
     }
 }

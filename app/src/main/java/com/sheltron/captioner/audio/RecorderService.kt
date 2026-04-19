@@ -104,6 +104,12 @@ class RecorderService : Service() {
         _state.value = ServiceState.Starting
         startForegroundSafely(buildNotification("Starting..."))
 
+        val settings = com.sheltron.captioner.settings.SettingsStore(applicationContext)
+        val engine = settings.engine
+
+        val useOnDevice = engine == com.sheltron.captioner.settings.SettingsStore.Engine.ON_DEVICE &&
+                          SpeechRecognizerEngine.isAvailable()
+
         captureJob = scope.launch {
             try {
                 if (ContextCompat.checkSelfPermission(
@@ -115,34 +121,12 @@ class RecorderService : Service() {
                     return@launch
                 }
 
-                if (!ModelManager.isReady(this@RecorderService)) {
-                    fail("Voice model not downloaded")
-                    return@launch
+                if (useOnDevice) {
+                    runOnDeviceCapture()
+                } else {
+                    runVoskCapture()
                 }
-
-                val modelPath = ModelManager.modelDir(this@RecorderService).absolutePath
-                voskModel = Model(modelPath)
-                transcriber = Transcriber(voskModel!!)
-
-                val repo = (applicationContext as CaptionerApp).repository
-                val startedAt = System.currentTimeMillis()
-                val title = defaultTitle(startedAt)
-                val sessionId = repo.startSession(startedAt, title)
-
-                _state.value = ServiceState.Recording(sessionId, startedAt)
-                _live.value = LiveText.Empty
-                startForegroundSafely(buildNotification("Recording"))
-
-                runCapture(sessionId, startedAt)
-
-                val tail = transcriber?.finish()?.trim().orEmpty()
-                if (tail.isNotEmpty()) {
-                    val offset = System.currentTimeMillis() - startedAt
-                    repo.addLine(sessionId, offset, tail)
-                }
-                repo.endSession(sessionId, System.currentTimeMillis())
             } catch (ce: CancellationException) {
-                // Normal stop path — still close the session cleanly
                 val current = _state.value
                 if (current is ServiceState.Recording) {
                     try {
@@ -164,6 +148,81 @@ class RecorderService : Service() {
                 transcriber = null
                 voskModel = null
             }
+        }
+    }
+
+    private suspend fun runVoskCapture() {
+        if (!ModelManager.isReady(this@RecorderService)) {
+            fail("Voice model not downloaded")
+            return
+        }
+
+        val modelPath = ModelManager.modelDir(this@RecorderService).absolutePath
+        voskModel = Model(modelPath)
+        transcriber = Transcriber(voskModel!!)
+
+        val repo = (applicationContext as CaptionerApp).repository
+        val startedAt = System.currentTimeMillis()
+        val title = defaultTitle(startedAt)
+        val sessionId = repo.startSession(startedAt, title)
+
+        _state.value = ServiceState.Recording(sessionId, startedAt)
+        _live.value = LiveText.Empty
+        startForegroundSafely(buildNotification("Recording"))
+
+        runCapture(sessionId, startedAt)
+
+        val tail = transcriber?.finish()?.trim().orEmpty()
+        if (tail.isNotEmpty()) {
+            val offset = System.currentTimeMillis() - startedAt
+            repo.addLine(sessionId, offset, tail)
+        }
+        repo.endSession(sessionId, System.currentTimeMillis())
+    }
+
+    private suspend fun runOnDeviceCapture() {
+        val repo = (applicationContext as CaptionerApp).repository
+        val startedAt = System.currentTimeMillis()
+        val title = defaultTitle(startedAt)
+        val sessionId = repo.startSession(startedAt, title)
+
+        _state.value = ServiceState.Recording(sessionId, startedAt)
+        _live.value = LiveText.Empty
+        startForegroundSafely(buildNotification("Recording"))
+
+        val finals = mutableListOf<String>()
+        val done = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val engine = SpeechRecognizerEngine(
+            context = applicationContext,
+            scope = scope,
+            onPartial = { partial ->
+                _live.value = _live.value.copy(partial = partial)
+            },
+            onFinal = { finalText ->
+                val text = finalText.trim()
+                if (text.isNotEmpty()) {
+                    scope.launch {
+                        val offset = System.currentTimeMillis() - startedAt
+                        repo.addLine(sessionId, offset, text)
+                    }
+                    finals.add(text)
+                    _live.value = LiveText(partial = "", finals = finals.toList())
+                }
+            },
+            onFatal = { msg ->
+                // Engine gave up — surface to UI and let stopCapture clean up.
+                _state.value = ServiceState.Error(msg)
+                done.complete(Unit)
+            }
+        )
+        engine.start()
+
+        try {
+            // Suspend until cancelled (stopCapture) or engine fatally fails.
+            done.await()
+        } finally {
+            engine.stop()
+            repo.endSession(sessionId, System.currentTimeMillis())
         }
     }
 
