@@ -104,8 +104,11 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // Encrypted preferences for API key storage
+    // Encrypted preferences for local settings storage
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Gemini Nano on-device LLM (AICore). Available on Pixel 8+, Galaxy S24+, Android 14+.
+    implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp02")
 
     // Vosk speech recognition
     implementation("com.alphacephei:vosk-android:0.3.47@aar")

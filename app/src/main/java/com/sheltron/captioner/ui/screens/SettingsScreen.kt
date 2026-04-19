@@ -2,10 +2,7 @@ package com.sheltron.captioner.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,19 +12,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -40,9 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.sheltron.captioner.settings.SettingsStore
 import com.sheltron.captioner.ui.theme.Accent
@@ -58,14 +48,8 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val store = vm.settings
-    var apiKey by remember { mutableStateOf(store.apiKey ?: "") }
-    var showKey by remember { mutableStateOf(false) }
-    var openaiKey by remember { mutableStateOf(store.openaiApiKey ?: "") }
-    var showOpenAi by remember { mutableStateOf(false) }
-    var selectedModel by remember { mutableStateOf(store.model) }
     var selectedEngine by remember { mutableStateOf(store.engine) }
     var soundsOn by remember { mutableStateOf(store.recordingSoundsEnabled) }
-    var savedHint by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -107,7 +91,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "Which engine turns your voice into captions.",
+                        "Cole's Log is fully offline. Pick which engine captures live captions.",
                         style = MaterialTheme.typography.bodySmall,
                         color = BoneMuted,
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
@@ -134,133 +118,21 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        "Anthropic API key",
+                        "Task extraction",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "Used only for task extraction. Stored encrypted on this device.",
+                        "Uses Gemini Nano running on your device — no network, no API key. " +
+                        "Requires a supported phone (Pixel 8 Pro+, Galaxy S24+) with AICore installed. " +
+                        "On unsupported devices, falls back to a simple keyword scan so the button still does something.",
                         style = MaterialTheme.typography.bodySmall,
                         color = BoneMuted,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
-                    )
-                    OutlinedTextField(
-                        value = apiKey,
-                        onValueChange = {
-                            apiKey = it
-                            savedHint = false
-                            store.apiKey = it
-                        },
-                        placeholder = { Text("sk-ant-…", color = BoneDim) },
-                        visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true,
-                        trailingIcon = {
-                            IconButton(onClick = { showKey = !showKey }) {
-                                Icon(
-                                    if (showKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                    null, tint = BoneMuted
-                                )
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Accent,
-                            unfocusedBorderColor = BoneDim,
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            cursorColor = Accent
-                        ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }
 
-            Surface(
-                color = InkRaised,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "Extraction model",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        "Which model to use when extracting tasks from a session.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = BoneMuted,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
-                    )
-                    SettingsStore.Model.entries.forEach { model ->
-                        ModelOption(
-                            display = model.display,
-                            selected = model == selectedModel,
-                            onClick = {
-                                selectedModel = model
-                                store.model = model
-                            }
-                        )
-                        if (model != SettingsStore.Model.entries.last()) Spacer(Modifier.height(6.dp))
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "On-device (Gemini Nano): not wired yet — coming in a later build.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = BoneDim
-                    )
-                }
-            }
-
-            // OpenAI key for Whisper polish
-            Surface(
-                color = InkRaised,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "OpenAI API key (Whisper)",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        "Used only when you tap \"Polish with Whisper\" on a session. ~$0.006/minute of audio. Stored encrypted.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = BoneMuted,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
-                    )
-                    OutlinedTextField(
-                        value = openaiKey,
-                        onValueChange = {
-                            openaiKey = it
-                            store.openaiApiKey = it
-                        },
-                        placeholder = { Text("sk-…", color = BoneDim) },
-                        visualTransformation = if (showOpenAi) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true,
-                        trailingIcon = {
-                            IconButton(onClick = { showOpenAi = !showOpenAi }) {
-                                Icon(
-                                    if (showOpenAi) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                    null, tint = BoneMuted
-                                )
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Accent,
-                            unfocusedBorderColor = BoneDim,
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            cursorColor = Accent
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-
-            // Recording sounds toggle
             Surface(
                 color = InkRaised,
                 shape = RoundedCornerShape(16.dp),
@@ -332,32 +204,6 @@ private fun EngineOption(display: String, note: String, selected: Boolean, onCli
             if (selected) {
                 Icon(Icons.Outlined.Check, null, tint = Accent,
                      modifier = Modifier.size(18.dp).padding(top = 2.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModelOption(display: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        color = if (selected) InkElevated else Color.Transparent,
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                display,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            if (selected) {
-                Icon(Icons.Outlined.Check, null, tint = Accent, modifier = Modifier.size(18.dp))
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.sheltron.captioner.api
 
+import android.content.Context
 import com.sheltron.captioner.data.db.Line
 import com.sheltron.captioner.data.db.Task
 import org.json.JSONArray
@@ -9,6 +10,11 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
+/**
+ * Runs Gemini Nano on-device to pull tasks out of a session's transcript.
+ * Falls back to a simple heuristic extractor if Nano is unavailable, so the
+ * button never silently fails on unsupported devices.
+ */
 object TaskExtractor {
 
     sealed class Result {
@@ -16,58 +22,41 @@ object TaskExtractor {
         data class Failed(val message: String) : Result()
     }
 
-    private const val SYSTEM = """
-You extract actionable tasks from a voice-transcribed session. The transcript may contain filler, false starts, and repetition — ignore those. Return ONLY a JSON array, no prose before or after, no markdown fences.
+    // Concise prompt — Nano is a small model, keep it focused.
+    private const val INSTRUCTIONS = """Extract actionable tasks from the dictation below. Return ONLY a JSON array. No prose, no markdown.
+Each item: {"title": "...", "context": "...", "due": "YYYY-MM-DD" or null, "priority": "low"|"medium"|"high"}.
+- "title": short imperative, under 80 chars.
+- "context": the phrase from the transcript that suggested this task.
+- "due": an ISO date if one was stated (use today's date to resolve words like "Friday"), else null.
+- "priority": medium unless the speaker flagged urgency.
+Skip questions, guesses, idle chatter. If nothing is actionable, return [].
 
-Schema for each task:
-{
-  "title": string (short imperative, <= 80 chars),
-  "context_snippet": string (the single transcript line or short quoted fragment that motivated this task),
-  "due_date": string|null (ISO 8601 date like "2026-04-26", or null if none mentioned),
-  "priority": "low" | "medium" | "high"
-}
-
-Rules:
-- Only include things the speaker actually committed to or assigned. Skip idle speculation, hypothetical "we could..." statements, and questions.
-- If the same task is mentioned multiple times, return one entry.
-- If there are no tasks, return [].
-- Use today's date as the anchor for relative dates ("Friday", "next week").
-- Default priority is "medium". Use "high" only when the speaker explicitly signals urgency.
+Today: %TODAY%
+Transcript:
+%TRANSCRIPT%
 """
 
     suspend fun extract(
+        context: Context,
         lines: List<Line>,
         sessionId: Long,
-        apiKey: String,
-        model: String,
         now: Long = System.currentTimeMillis()
     ): Result {
         if (lines.isEmpty()) return Result.Ok(emptyList())
 
         val transcript = lines.joinToString("\n") { "[${formatOffset(it.offsetMs)}] ${it.text}" }
-        val dateStr = isoDate(now)
-        val user = "Today's date is $dateStr.\n\nTranscript:\n\n$transcript"
+        val prompt = INSTRUCTIONS
+            .replace("%TODAY%", isoDate(now))
+            .replace("%TRANSCRIPT%", transcript.take(6000)) // keep prompt size bounded for small model
 
-        return when (val res = ClaudeClient.complete(apiKey, model, SYSTEM.trim(), user)) {
-            is ClaudeClient.Result.Ok -> parseTasks(res.text, lines, sessionId, now)
-            is ClaudeClient.Result.HttpError -> Result.Failed(apiErrorMessage(res.code, res.body))
-            is ClaudeClient.Result.NetworkError -> Result.Failed("Network: ${res.message}")
-        }
-    }
-
-    private fun apiErrorMessage(code: Int, body: String): String {
-        // Anthropic returns {"type":"error","error":{"type":"...","message":"..."}}
-        val detail = try {
-            JSONObject(body).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
-        } catch (_: Throwable) { null }
-
-        return when (code) {
-            401 -> "Invalid API key. Check Settings."
-            429 -> "Rate limited. Try again in a moment."
-            529 -> "Anthropic is overloaded. Try again."
-            in 500..599 -> "Anthropic server error ($code). ${detail ?: "Try again."}"
-            400 -> detail ?: "Bad request ($code)."  // low credits / invalid model / etc. land here
-            else -> detail?.let { "$it ($code)" } ?: "API error $code: ${body.take(200)}"
+        return when (val r = NanoClient.generate(context, prompt)) {
+            is NanoClient.Result.Ok -> parseTasks(r.text, lines, sessionId, now)
+            is NanoClient.Result.Failed -> {
+                // Fall back to a tiny heuristic so we still produce something useful.
+                val heuristic = HeuristicExtractor.extract(lines, sessionId, now)
+                if (heuristic.isNotEmpty()) Result.Ok(heuristic)
+                else Result.Failed(r.message)
+            }
         }
     }
 
@@ -77,7 +66,6 @@ Rules:
         val arr = try {
             JSONArray(json)
         } catch (t: Throwable) {
-            // Try to find the first [ ... ] in case the model wrapped it in prose.
             val start = json.indexOf('[')
             val end = json.lastIndexOf(']')
             if (start < 0 || end <= start) return Result.Failed("Model returned non-JSON")
@@ -90,14 +78,18 @@ Rules:
             val obj = arr.optJSONObject(i) ?: continue
             val title = obj.optString("title").trim()
             if (title.isBlank()) continue
-            val ctx = obj.optString("context_snippet").trim()
-            val due = parseIsoDate(obj.optString("due_date").takeIf { it.isNotBlank() && it != "null" })
+            val ctx = obj.optString("context").trim().ifBlank {
+                obj.optString("context_snippet").trim()
+            }
+            val due = parseIsoDate(
+                obj.optString("due").takeIf { it.isNotBlank() && it != "null" }
+                    ?: obj.optString("due_date").takeIf { it.isNotBlank() && it != "null" }
+            )
             val priority = when (obj.optString("priority").lowercase()) {
                 "high" -> "high"
                 "low" -> "low"
                 else -> "medium"
             }
-            // Best-effort: find the transcript line whose text overlaps the snippet, to set sourceLineOffsetMs.
             val matchOffset = lines.firstOrNull {
                 ctx.isNotBlank() && (it.text.contains(ctx, ignoreCase = true) || ctx.contains(it.text, ignoreCase = true))
             }?.offsetMs
@@ -135,5 +127,43 @@ Rules:
         val m = total / 60
         val s = total % 60
         return "%02d:%02d".format(m, s)
+    }
+}
+
+/**
+ * Last-resort extractor: pulls obvious imperative / reminder patterns from the transcript.
+ * Crude, but better than a blank "Nano unavailable" error on unsupported devices.
+ */
+private object HeuristicExtractor {
+    private val patterns = listOf(
+        Regex("""(?i)\b(?:remind me to|don['’]t forget to|i need to|we need to|have to|must|todo:?)\s+([^.!?\n]+)"""),
+        Regex("""(?i)\bfollow up (?:with|on)\s+([^.!?\n]+)"""),
+        Regex("""(?i)\bmake sure (?:to\s+)?([^.!?\n]+)""")
+    )
+
+    fun extract(lines: List<Line>, sessionId: Long, now: Long): List<Task> {
+        val seen = mutableSetOf<String>()
+        val out = mutableListOf<Task>()
+        for (line in lines) {
+            for (p in patterns) {
+                for (m in p.findAll(line.text)) {
+                    val raw = m.groupValues.getOrNull(1)?.trim() ?: continue
+                    val title = raw.take(80).trimEnd(',', ' ', '.', ';')
+                    if (title.length < 3) continue
+                    if (!seen.add(title.lowercase())) continue
+                    out.add(
+                        Task(
+                            title = title,
+                            contextSnippet = line.text.take(500),
+                            priority = "medium",
+                            sourceSessionId = sessionId,
+                            sourceLineOffsetMs = line.offsetMs,
+                            createdAt = now
+                        )
+                    )
+                }
+            }
+        }
+        return out
     }
 }
