@@ -11,5 +11,7 @@ captures/
 *.keystore
 *.jks
 !app/debug.keystore
+# Vendored whisper.cpp source — checked out by a gradle task on first build.
+app/src/main/cpp/whisper.cpp/
 /app/release/
 /app/debug/

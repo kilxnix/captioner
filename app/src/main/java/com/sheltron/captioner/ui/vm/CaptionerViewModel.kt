@@ -6,8 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.sheltron.captioner.CaptionerApp
 import com.sheltron.captioner.api.GemmaModelManager
 import com.sheltron.captioner.api.TaskExtractor
+import com.sheltron.captioner.audio.AudioDecoder
 import com.sheltron.captioner.audio.ModelManager
 import com.sheltron.captioner.audio.RecorderService
+import com.sheltron.captioner.audio.WhisperCpp
+import com.sheltron.captioner.audio.WhisperModelManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.sheltron.captioner.data.db.Line
 import com.sheltron.captioner.data.db.Session
 import com.sheltron.captioner.data.db.Task
@@ -58,6 +63,7 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
     init {
         refreshModelState()
         refreshGemmaState()
+        refreshWhisperState()
     }
 
     fun refreshModelState() {
@@ -166,4 +172,96 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    // ---- Whisper (offline polish) ----
+
+    sealed class WhisperModelState {
+        object Unknown : WhisperModelState()
+        object Ready : WhisperModelState()
+        data class Downloading(val percent: Int) : WhisperModelState()
+        data class Failed(val message: String) : WhisperModelState()
+    }
+
+    private val _whisperState = MutableStateFlow<WhisperModelState>(WhisperModelState.Unknown)
+    val whisperState: StateFlow<WhisperModelState> = _whisperState.asStateFlow()
+
+    fun refreshWhisperState() {
+        _whisperState.value = if (WhisperModelManager.isReady(getApplication())) WhisperModelState.Ready
+        else WhisperModelState.Unknown
+    }
+
+    fun downloadWhisper() {
+        if (_whisperState.value is WhisperModelState.Downloading) return
+        viewModelScope.launch {
+            WhisperModelManager.download(getApplication()).collect { event ->
+                _whisperState.value = when (event) {
+                    is WhisperModelManager.Event.Progress -> WhisperModelState.Downloading(event.percent)
+                    WhisperModelManager.Event.Done -> WhisperModelState.Ready
+                    is WhisperModelManager.Event.Failed -> WhisperModelState.Failed(event.message)
+                }
+            }
+        }
+    }
+
+    sealed class PolishState {
+        object Idle : PolishState()
+        data class Running(val phase: String) : PolishState()
+        data class Done(val segments: Int) : PolishState()
+        data class Failed(val message: String) : PolishState()
+    }
+
+    private val _polishState = MutableStateFlow<PolishState>(PolishState.Idle)
+    val polishState: StateFlow<PolishState> = _polishState.asStateFlow()
+
+    fun polishWithWhisper(sessionId: Long) {
+        if (_polishState.value is PolishState.Running) return
+        val audio = repo.audioFileFor(sessionId)
+        if (!audio.exists() || audio.length() == 0L) {
+            _polishState.value = PolishState.Failed("No audio file for this session.")
+            return
+        }
+        if (!WhisperModelManager.isReady(getApplication())) {
+            _polishState.value = PolishState.Failed("Whisper model not downloaded. Open Settings.")
+            return
+        }
+        if (!WhisperCpp.isLoadable()) {
+            _polishState.value = PolishState.Failed("Native whisper library not available: ${WhisperCpp.loadErrorMessage()}")
+            return
+        }
+
+        _polishState.value = PolishState.Running("Decoding audio")
+        viewModelScope.launch {
+            try {
+                val pcm = withContext(Dispatchers.IO) { AudioDecoder.decodeToFloat16k(audio) }
+                if (pcm.isEmpty()) {
+                    _polishState.value = PolishState.Failed("Couldn't decode audio.")
+                    return@launch
+                }
+
+                _polishState.value = PolishState.Running("Loading Whisper")
+                val modelPath = WhisperModelManager.modelFile(getApplication()).absolutePath
+                val whisper = withContext(Dispatchers.Default) { WhisperCpp.fromFile(modelPath) }
+                if (whisper == null) {
+                    _polishState.value = PolishState.Failed("Whisper failed to load.")
+                    return@launch
+                }
+
+                _polishState.value = PolishState.Running("Transcribing (this is the slow part)")
+                val segments = withContext(Dispatchers.Default) {
+                    try { whisper.transcribe(pcm) } finally { whisper.close() }
+                }
+
+                _polishState.value = PolishState.Running("Replacing transcript")
+                val newLines = segments
+                    .filter { it.text.isNotBlank() }
+                    .map { it.startMs to it.text.trim() }
+                repo.replaceLines(sessionId, newLines)
+                _polishState.value = PolishState.Done(newLines.size)
+            } catch (t: Throwable) {
+                _polishState.value = PolishState.Failed("${t.javaClass.simpleName}: ${t.message ?: ""}")
+            }
+        }
+    }
+
+    fun clearPolishState() { _polishState.value = PolishState.Idle }
 }

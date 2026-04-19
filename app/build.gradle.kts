@@ -20,6 +20,20 @@ android {
             // Keep APK small — target 64-bit ARM only. Add "armeabi-v7a" if you need 32-bit support.
             abiFilters += listOf("arm64-v8a")
         }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17", "-fexceptions", "-frtti")
+                arguments += listOf("-DANDROID_STL=c++_shared")
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     signingConfigs {
@@ -69,6 +83,26 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+// Clone whisper.cpp into app/src/main/cpp/whisper.cpp/ before the native build.
+val cloneWhisperCpp by tasks.registering(Exec::class) {
+    val dest = project.file("src/main/cpp/whisper.cpp")
+    outputs.dir(dest)
+    onlyIf { !dest.resolve("CMakeLists.txt").exists() }
+    commandLine(
+        "git", "clone",
+        "--depth", "1",
+        "--branch", "v1.7.2",
+        "https://github.com/ggerganov/whisper.cpp.git",
+        dest.absolutePath
+    )
+}
+
+tasks.configureEach {
+    if (name.startsWith("externalNativeBuild") || name.startsWith("generateJsonModel")) {
+        dependsOn(cloneWhisperCpp)
     }
 }
 

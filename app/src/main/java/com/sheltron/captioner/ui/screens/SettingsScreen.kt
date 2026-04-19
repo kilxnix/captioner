@@ -56,6 +56,7 @@ fun SettingsScreen(
     var selectedEngine by remember { mutableStateOf(store.engine) }
     var soundsOn by remember { mutableStateOf(store.recordingSoundsEnabled) }
     val gemmaState by vm.gemmaState.collectAsState()
+    val whisperState by vm.whisperState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -180,6 +181,72 @@ fun SettingsScreen(
                                      modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.size(6.dp))
                                 Text("Download model (~550 MB)", color = Color.Black)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Surface(
+                color = InkRaised,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Transcript polish model (Whisper base.en)",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "Optional. On a session, tap \"Polish with Whisper\" to replace the Vosk " +
+                        "captions with a much more accurate transcript, fully on-device. ~60 MB.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BoneMuted,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+                    )
+                    when (val s = whisperState) {
+                        is CaptionerViewModel.WhisperModelState.Ready -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Check, null, tint = Accent,
+                                     modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.size(8.dp))
+                                Text("Model ready.", style = MaterialTheme.typography.bodyMedium,
+                                     color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                        is CaptionerViewModel.WhisperModelState.Downloading -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(color = Accent, strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(10.dp))
+                                Text("Downloading… ${s.percent}%",
+                                     style = MaterialTheme.typography.bodyMedium, color = BoneMuted)
+                            }
+                        }
+                        is CaptionerViewModel.WhisperModelState.Failed -> {
+                            Text("Download failed: ${s.message}",
+                                 style = MaterialTheme.typography.bodySmall, color = BoneDim)
+                            Spacer(Modifier.size(10.dp))
+                            Button(
+                                onClick = { vm.downloadWhisper() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                            ) {
+                                Icon(Icons.Outlined.Download, null, tint = Color.Black,
+                                     modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text("Retry", color = Color.Black)
+                            }
+                        }
+                        else -> {
+                            Button(
+                                onClick = { vm.downloadWhisper() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                            ) {
+                                Icon(Icons.Outlined.Download, null, tint = Color.Black,
+                                     modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text("Download model (~60 MB)", color = Color.Black)
                             }
                         }
                     }
