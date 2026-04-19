@@ -80,7 +80,8 @@ Rules:
         val tasks = mutableListOf<Task>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            val title = obj.optString("title").trim().ifBlank { continue }
+            val title = obj.optString("title").trim()
+            if (title.isBlank()) continue
             val ctx = obj.optString("context_snippet").trim()
             val due = parseIsoDate(obj.optString("due_date").takeIf { it.isNotBlank() && it != "null" })
             val priority = when (obj.optString("priority").lowercase()) {
