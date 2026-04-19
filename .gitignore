@@ -10,5 +10,6 @@ captures/
 *.apk
 *.keystore
 *.jks
+!app/debug.keystore
 /app/release/
 /app/debug/
