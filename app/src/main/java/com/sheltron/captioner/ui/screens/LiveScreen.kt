@@ -71,10 +71,25 @@ fun LiveScreen(
         }
     }
 
-    // If the service stopped (error or stop button in notification), bounce back
-    LaunchedEffect(svcState) {
-        if (svcState is RecorderService.ServiceState.Idle || svcState is RecorderService.ServiceState.Error) {
+    var hasRecorded by remember { mutableStateOf(false) }
+    var navigated by remember { mutableStateOf(false) }
+    fun goBackOnce() {
+        if (!navigated) {
+            navigated = true
             onBack()
+        }
+    }
+
+    LaunchedEffect(svcState) {
+        when (svcState) {
+            is RecorderService.ServiceState.Starting,
+            is RecorderService.ServiceState.Recording -> hasRecorded = true
+            is RecorderService.ServiceState.Idle,
+            is RecorderService.ServiceState.Error -> {
+                // Only auto-pop after we've actually started — otherwise we bounce back
+                // immediately on initial composition before the service transitions to Starting.
+                if (hasRecorded) goBackOnce()
+            }
         }
     }
 
@@ -92,8 +107,7 @@ fun LiveScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = {
-                vm.stopRecording()
-                onBack()
+                if (hasRecorded) vm.stopRecording() else goBackOnce()
             }) {
                 Icon(Icons.Outlined.ArrowBack, null,
                      tint = MaterialTheme.colorScheme.onBackground)
@@ -174,10 +188,7 @@ fun LiveScreen(
                 modifier = Modifier
                     .size(88.dp)
                     .background(Accent, CircleShape)
-                    .clickable {
-                        vm.stopRecording()
-                        onBack()
-                    },
+                    .clickable { vm.stopRecording() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

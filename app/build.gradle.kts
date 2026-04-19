@@ -21,6 +21,20 @@ android {
         }
     }
 
+    signingConfigs {
+        // Stable debug signing key committed at app/debug.keystore.
+        // Same key across local and CI builds so debug APKs update in place.
+        val stableDebugKeystore = rootProject.file("app/debug.keystore")
+        if (stableDebugKeystore.exists()) {
+            getByName("debug") {
+                storeFile = stableDebugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -32,6 +46,7 @@ android {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

@@ -65,7 +65,10 @@ fun CaptionerNav() {
         composable(Routes.LIVE) {
             LiveScreen(
                 vm = vm,
-                onBack = { nav.popBackStack() }
+                onBack = {
+                    // Guard against popping past HOME if onBack fires more than once.
+                    if (nav.currentDestination?.route == Routes.LIVE) nav.popBackStack()
+                }
             )
         }
         composable(
