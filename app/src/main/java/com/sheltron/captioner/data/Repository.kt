@@ -1,5 +1,7 @@
 package com.sheltron.captioner.data
 
+import android.content.Context
+import com.sheltron.captioner.audio.AudioPaths
 import com.sheltron.captioner.data.db.Line
 import com.sheltron.captioner.data.db.LineDao
 import com.sheltron.captioner.data.db.Session
@@ -7,6 +9,7 @@ import com.sheltron.captioner.data.db.SessionDao
 import kotlinx.coroutines.flow.Flow
 
 class Repository(
+    private val context: Context,
     private val sessionDao: SessionDao,
     private val lineDao: LineDao
 ) {
@@ -34,7 +37,10 @@ class Repository(
 
     suspend fun deleteSession(id: Long) {
         sessionDao.delete(id)
+        try { AudioPaths.sessionAudio(context, id).delete() } catch (_: Exception) {}
     }
 
     suspend fun lineCount(sessionId: Long): Int = lineDao.countForSession(sessionId)
+
+    fun audioFileFor(sessionId: Long) = AudioPaths.sessionAudio(context, sessionId)
 }

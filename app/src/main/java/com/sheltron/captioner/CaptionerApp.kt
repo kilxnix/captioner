@@ -11,6 +11,6 @@ class CaptionerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val db = AppDatabase.get(this)
-        repository = Repository(db.sessionDao(), db.lineDao())
+        repository = Repository(this, db.sessionDao(), db.lineDao())
     }
 }

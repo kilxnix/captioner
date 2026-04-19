@@ -193,11 +193,17 @@ class RecorderService : Service() {
         val finals = mutableListOf<String>()
         val repo = (applicationContext as CaptionerApp).repository
 
+        val encoder = runCatching {
+            AudioEncoder(AudioPaths.sessionAudio(applicationContext, sessionId), sampleRate)
+                .also { it.start() }
+        }.getOrNull()
+
         record.startRecording()
         try {
             while (isActive) {
                 val n = record.read(shortBuf, 0, shortBuf.size)
                 if (n <= 0) continue
+                try { encoder?.encodePcm(shortBuf, n) } catch (_: Throwable) { /* transcript keeps going */ }
                 when (val r = transcriber!!.accept(shortBuf, n)) {
                     is Transcriber.Result.Partial -> {
                         _live.value = _live.value.copy(partial = r.text)
@@ -218,6 +224,7 @@ class RecorderService : Service() {
         } finally {
             try { record.stop() } catch (_: Exception) {}
             record.release()
+            try { encoder?.close() } catch (_: Exception) {}
         }
     }
 

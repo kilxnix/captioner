@@ -79,4 +79,6 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
             onReady(text)
         }
     }
+
+    fun audioFileFor(sessionId: Long) = repo.audioFileFor(sessionId)
 }
