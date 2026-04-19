@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sheltron.captioner.CaptionerApp
+import com.sheltron.captioner.api.GemmaModelManager
 import com.sheltron.captioner.api.TaskExtractor
 import com.sheltron.captioner.audio.ModelManager
 import com.sheltron.captioner.audio.RecorderService
@@ -56,6 +57,7 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshModelState()
+        refreshGemmaState()
     }
 
     fun refreshModelState() {
@@ -129,5 +131,33 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearExtractionState() {
         _extractionState.value = ExtractionState.Idle
+    }
+
+    sealed class GemmaState {
+        object Unknown : GemmaState()
+        object Ready : GemmaState()
+        data class Downloading(val percent: Int) : GemmaState()
+        data class Failed(val message: String) : GemmaState()
+    }
+
+    private val _gemmaState = MutableStateFlow<GemmaState>(GemmaState.Unknown)
+    val gemmaState: StateFlow<GemmaState> = _gemmaState.asStateFlow()
+
+    fun refreshGemmaState() {
+        _gemmaState.value = if (GemmaModelManager.isReady(getApplication())) GemmaState.Ready
+        else GemmaState.Unknown
+    }
+
+    fun downloadGemma() {
+        if (_gemmaState.value is GemmaState.Downloading) return
+        viewModelScope.launch {
+            GemmaModelManager.download(getApplication()).collect { event ->
+                _gemmaState.value = when (event) {
+                    is GemmaModelManager.Event.Progress -> GemmaState.Downloading(event.percent)
+                    GemmaModelManager.Event.Done -> GemmaState.Ready
+                    is GemmaModelManager.Event.Failed -> GemmaState.Failed(event.message)
+                }
+            }
+        }
     }
 }

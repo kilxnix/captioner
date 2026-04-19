@@ -18,6 +18,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +30,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +55,7 @@ fun SettingsScreen(
     val store = vm.settings
     var selectedEngine by remember { mutableStateOf(store.engine) }
     var soundsOn by remember { mutableStateOf(store.recordingSoundsEnabled) }
+    val gemmaState by vm.gemmaState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -118,18 +124,65 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        "Task extraction",
+                        "Task extraction model (Gemma 3 1B)",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "Uses Gemini Nano running on your device — no network, no API key. " +
-                        "Requires a supported phone (Pixel 8 Pro+, Galaxy S24+) with AICore installed. " +
-                        "On unsupported devices, falls back to a simple keyword scan so the button still does something.",
+                        "Runs fully on-device via MediaPipe — no network after the one-time download, no API key. ~550 MB.",
                         style = MaterialTheme.typography.bodySmall,
                         color = BoneMuted,
-                        modifier = Modifier.padding(top = 2.dp)
+                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
                     )
+
+                    when (val s = gemmaState) {
+                        is CaptionerViewModel.GemmaState.Ready -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Check, null, tint = Accent,
+                                     modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.size(8.dp))
+                                Text("Model ready.",
+                                     style = MaterialTheme.typography.bodyMedium,
+                                     color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                        is CaptionerViewModel.GemmaState.Downloading -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(color = Accent, strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(10.dp))
+                                Text("Downloading… ${s.percent}%",
+                                     style = MaterialTheme.typography.bodyMedium,
+                                     color = BoneMuted)
+                            }
+                        }
+                        is CaptionerViewModel.GemmaState.Failed -> {
+                            Text("Download failed: ${s.message}",
+                                 style = MaterialTheme.typography.bodySmall,
+                                 color = BoneDim)
+                            Spacer(Modifier.size(10.dp))
+                            Button(
+                                onClick = { vm.downloadGemma() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                            ) {
+                                Icon(Icons.Outlined.Download, null, tint = Color.Black,
+                                     modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text("Retry", color = Color.Black)
+                            }
+                        }
+                        else -> {
+                            Button(
+                                onClick = { vm.downloadGemma() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                            ) {
+                                Icon(Icons.Outlined.Download, null, tint = Color.Black,
+                                     modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text("Download model (~550 MB)", color = Color.Black)
+                            }
+                        }
+                    }
                 }
             }
 

@@ -104,8 +104,8 @@ dependencies {
     // Encrypted preferences for local settings storage
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-    // Gemini Nano on-device LLM (AICore). Available on Pixel 8+, Galaxy S24+, Android 14+.
-    implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp02")
+    // On-device LLM via MediaPipe (Gemma). Broader device support than AICore.
+    implementation("com.google.mediapipe:tasks-genai:0.10.24")
 
     // Vosk speech recognition
     implementation("com.alphacephei:vosk-android:0.3.47@aar")

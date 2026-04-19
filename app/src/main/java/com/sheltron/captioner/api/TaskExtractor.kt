@@ -49,10 +49,11 @@ Transcript:
             .replace("%TODAY%", isoDate(now))
             .replace("%TRANSCRIPT%", transcript.take(6000)) // keep prompt size bounded for small model
 
-        return when (val r = NanoClient.generate(context, prompt)) {
-            is NanoClient.Result.Ok -> parseTasks(r.text, lines, sessionId, now)
-            is NanoClient.Result.Failed -> {
-                // Fall back to a tiny heuristic so we still produce something useful.
+        return when (val r = GemmaClient.generate(context, prompt)) {
+            is GemmaClient.Result.Ok -> parseTasks(r.text, lines, sessionId, now)
+            is GemmaClient.Result.Failed -> {
+                // Fall back to a tiny heuristic so we still produce something useful
+                // on devices where the model download failed or isn't present yet.
                 val heuristic = HeuristicExtractor.extract(lines, sessionId, now)
                 if (heuristic.isNotEmpty()) Result.Ok(heuristic)
                 else Result.Failed(r.message)
