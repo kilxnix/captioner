@@ -22,13 +22,13 @@ class SettingsStore(context: Context) {
     }
 
     enum class Engine(val id: String, val display: String, val note: String) {
+        VOSK("vosk", "Offline Vosk (saves audio)",
+            "Weaker live captions, but audio is saved so you can polish with Whisper later."),
         ON_DEVICE("on_device", "On-device (Google, Android 12+)",
-            "Best caption quality. Audio file not saved this session."),
-        VOSK("vosk", "Offline Vosk (with audio recording)",
-            "Weaker captions, but saves audio for playback.");
+            "Better live captions. Audio file not saved this session.");
 
         companion object {
-            fun fromId(id: String?): Engine = entries.firstOrNull { it.id == id } ?: ON_DEVICE
+            fun fromId(id: String?): Engine = entries.firstOrNull { it.id == id } ?: VOSK
         }
     }
 
@@ -59,11 +59,23 @@ class SettingsStore(context: Context) {
         get() = Engine.fromId(prefs.getString(KEY_ENGINE, null))
         set(value) { prefs.edit().putString(KEY_ENGINE, value.id).apply() }
 
+    var openaiApiKey: String?
+        get() = prefs.getString(KEY_OPENAI, null)?.takeIf { it.isNotBlank() }
+        set(value) { prefs.edit().putString(KEY_OPENAI, value?.trim()).apply() }
+
+    /** Start/stop recording beeps. Default on. */
+    var recordingSoundsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SOUNDS, true)
+        set(value) { prefs.edit().putBoolean(KEY_SOUNDS, value).apply() }
+
     fun hasApiKey(): Boolean = !apiKey.isNullOrBlank()
+    fun hasOpenAiKey(): Boolean = !openaiApiKey.isNullOrBlank()
 
     companion object {
         private const val KEY_API = "anthropic_api_key"
         private const val KEY_MODEL = "anthropic_model"
         private const val KEY_ENGINE = "transcription_engine"
+        private const val KEY_OPENAI = "openai_api_key"
+        private const val KEY_SOUNDS = "recording_sounds_enabled"
     }
 }

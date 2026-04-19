@@ -38,6 +38,13 @@ class Repository(
         lineDao.insert(Line(sessionId = sessionId, offsetMs = offsetMs, text = text))
     }
 
+    suspend fun replaceLines(sessionId: Long, newLines: List<Pair<Long, String>>) {
+        val rows = newLines.map { (offset, text) ->
+            Line(sessionId = sessionId, offsetMs = offset, text = text)
+        }
+        lineDao.replaceForSession(sessionId, rows)
+    }
+
     /** Deleting a session detaches its tasks (sets sourceSessionId=null) — tasks persist. */
     suspend fun deleteSession(id: Long) {
         taskDao.detachFromSession(id)

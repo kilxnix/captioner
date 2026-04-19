@@ -106,9 +106,12 @@ class RecorderService : Service() {
 
         val settings = com.sheltron.captioner.settings.SettingsStore(applicationContext)
         val engine = settings.engine
+        val soundsOn = settings.recordingSoundsEnabled
 
         val useOnDevice = engine == com.sheltron.captioner.settings.SettingsStore.Engine.ON_DEVICE &&
                           SpeechRecognizerEngine.isAvailable()
+
+        if (soundsOn) SoundEffects.playStart()
 
         captureJob = scope.launch {
             try {
@@ -288,10 +291,15 @@ class RecorderService : Service() {
     }
 
     private fun stopCapture() {
+        val wasRecording = _state.value is ServiceState.Recording
         captureJob?.cancel()
         captureJob = null
         _live.value = LiveText.Empty
         _state.value = ServiceState.Idle
+        if (wasRecording) {
+            val settings = com.sheltron.captioner.settings.SettingsStore(applicationContext)
+            if (settings.recordingSoundsEnabled) SoundEffects.playStop()
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }

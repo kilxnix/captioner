@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Pause
@@ -71,6 +72,7 @@ fun SessionDetailScreen(
     val session by vm.sessionFlow(sessionId).collectAsState(initial = null)
     val sessionTasks by vm.tasksForSession(sessionId).collectAsState(initial = emptyList())
     val extractionState by vm.extractionState.collectAsState()
+    val polishState by vm.polishState.collectAsState()
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
 
@@ -138,6 +140,45 @@ fun SessionDetailScreen(
             }
             IconButton(onClick = { confirmDelete = true }) {
                 Icon(Icons.Outlined.DeleteOutline, null, tint = Accent)
+            }
+        }
+
+        // Polish transcript with Whisper (only if audio file exists)
+        if (hasAudio) {
+            Surface(
+                color = InkRaised,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clickable(enabled = polishState !is CaptionerViewModel.PolishState.Running) {
+                        vm.polishWithWhisper(sessionId)
+                    }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.AutoFixHigh, null, tint = Accent,
+                         modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.size(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        val (title, sub) = when (val s = polishState) {
+                            is CaptionerViewModel.PolishState.Running ->
+                                "Polishing with Whisper…" to "Uploading audio to OpenAI. This replaces the current captions."
+                            is CaptionerViewModel.PolishState.Done ->
+                                "Polished (${s.lines} segments)" to "Transcript replaced with Whisper output."
+                            is CaptionerViewModel.PolishState.Failed ->
+                                "Polish failed" to s.message
+                            else ->
+                                "Polish transcript with Whisper" to "Replaces captions with a much more accurate transcript (BYO OpenAI key)."
+                        }
+                        Text(title, style = MaterialTheme.typography.titleSmall,
+                             color = MaterialTheme.colorScheme.onSurface,
+                             fontWeight = FontWeight.SemiBold)
+                        Text(sub, style = MaterialTheme.typography.bodySmall, color = BoneMuted)
+                    }
+                }
             }
         }
 

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sheltron.captioner.CaptionerApp
 import com.sheltron.captioner.api.TaskExtractor
+import com.sheltron.captioner.api.WhisperClient
 import com.sheltron.captioner.audio.ModelManager
 import com.sheltron.captioner.audio.RecorderService
 import com.sheltron.captioner.data.db.Line
@@ -135,4 +136,51 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
     fun clearExtractionState() {
         _extractionState.value = ExtractionState.Idle
     }
+
+    sealed class PolishState {
+        object Idle : PolishState()
+        object Running : PolishState()
+        data class Done(val lines: Int) : PolishState()
+        data class Failed(val message: String) : PolishState()
+    }
+
+    private val _polishState = MutableStateFlow<PolishState>(PolishState.Idle)
+    val polishState: StateFlow<PolishState> = _polishState.asStateFlow()
+
+    fun polishWithWhisper(sessionId: Long) {
+        if (_polishState.value is PolishState.Running) return
+        val key = settings.openaiApiKey
+        if (key.isNullOrBlank()) {
+            _polishState.value = PolishState.Failed("Set your OpenAI key in Settings first.")
+            return
+        }
+        val audio = repo.audioFileFor(sessionId)
+        if (!audio.exists() || audio.length() == 0L) {
+            _polishState.value = PolishState.Failed("No audio file for this session.")
+            return
+        }
+        _polishState.value = PolishState.Running
+        viewModelScope.launch {
+            when (val r = WhisperClient.transcribe(key, audio)) {
+                is WhisperClient.Result.Ok -> {
+                    val offsets = r.segments.map { it.startMs to it.text }
+                    repo.replaceLines(sessionId, offsets)
+                    _polishState.value = PolishState.Done(r.segments.size)
+                }
+                is WhisperClient.Result.HttpError -> {
+                    val msg = when (r.code) {
+                        401 -> "Invalid OpenAI key. Check Settings."
+                        429 -> "Rate limited. Try again shortly."
+                        in 500..599 -> "OpenAI error ${r.code}. Try again."
+                        else -> r.message
+                    }
+                    _polishState.value = PolishState.Failed(msg)
+                }
+                is WhisperClient.Result.NetworkError ->
+                    _polishState.value = PolishState.Failed("Network: ${r.message}")
+            }
+        }
+    }
+
+    fun clearPolishState() { _polishState.value = PolishState.Idle }
 }

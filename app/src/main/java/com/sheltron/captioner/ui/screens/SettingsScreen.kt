@@ -2,6 +2,8 @@ package com.sheltron.captioner.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +29,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,8 +60,11 @@ fun SettingsScreen(
     val store = vm.settings
     var apiKey by remember { mutableStateOf(store.apiKey ?: "") }
     var showKey by remember { mutableStateOf(false) }
+    var openaiKey by remember { mutableStateOf(store.openaiApiKey ?: "") }
+    var showOpenAi by remember { mutableStateOf(false) }
     var selectedModel by remember { mutableStateOf(store.model) }
     var selectedEngine by remember { mutableStateOf(store.engine) }
+    var soundsOn by remember { mutableStateOf(store.recordingSoundsEnabled) }
     var savedHint by remember { mutableStateOf(false) }
 
     Column(
@@ -83,7 +90,9 @@ fun SettingsScreen(
         }
 
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Surface(
@@ -202,6 +211,94 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            // OpenAI key for Whisper polish
+            Surface(
+                color = InkRaised,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "OpenAI API key (Whisper)",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "Used only when you tap \"Polish with Whisper\" on a session. ~$0.006/minute of audio. Stored encrypted.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BoneMuted,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+                    )
+                    OutlinedTextField(
+                        value = openaiKey,
+                        onValueChange = {
+                            openaiKey = it
+                            store.openaiApiKey = it
+                        },
+                        placeholder = { Text("sk-…", color = BoneDim) },
+                        visualTransformation = if (showOpenAi) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showOpenAi = !showOpenAi }) {
+                                Icon(
+                                    if (showOpenAi) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                    null, tint = BoneMuted
+                                )
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Accent,
+                            unfocusedBorderColor = BoneDim,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            cursorColor = Accent
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            // Recording sounds toggle
+            Surface(
+                color = InkRaised,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Recording sounds",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "Beep when recording starts and stops.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BoneMuted
+                        )
+                    }
+                    Switch(
+                        checked = soundsOn,
+                        onCheckedChange = {
+                            soundsOn = it
+                            store.recordingSoundsEnabled = it
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.Black,
+                            checkedTrackColor = Accent,
+                            uncheckedThumbColor = BoneMuted,
+                            uncheckedTrackColor = InkElevated
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
