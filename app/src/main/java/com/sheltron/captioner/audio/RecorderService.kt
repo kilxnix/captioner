@@ -241,7 +241,7 @@ class RecorderService : Service() {
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             val ch = NotificationChannel(
                 CHANNEL_ID,
-                "Captioner recording",
+                "Cole's Log recording",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Microphone capture and live captions"
@@ -266,7 +266,7 @@ class RecorderService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Captioner")
+            .setContentTitle("Cole's Log")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(openIntent)

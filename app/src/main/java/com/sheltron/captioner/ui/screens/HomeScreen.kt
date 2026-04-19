@@ -115,7 +115,7 @@ fun HomeScreen(
     ) {
         Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
             Text(
-                "Captioner",
+                "Cole's Log",
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onBackground,
                 fontWeight = FontWeight.SemiBold
@@ -143,7 +143,7 @@ fun HomeScreen(
                     !micGranted -> PermissionBlock(
                         icon = { Icon(Icons.Outlined.Mic, null, tint = Accent) },
                         title = "Microphone access",
-                        body = "Captioner needs the mic to hear what to transcribe.",
+                        body = "Cole's Log needs the mic to hear what to transcribe.",
                         cta = "Grant microphone",
                         onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) }
                     )
@@ -416,7 +416,7 @@ private fun BatteryHint() {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    "Tap to exempt Captioner from battery optimization so long sessions survive.",
+                    "Tap to exempt Cole's Log from battery optimization so long sessions survive.",
                     style = MaterialTheme.typography.bodySmall,
                     color = BoneMuted
                 )
