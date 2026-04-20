@@ -69,17 +69,19 @@
         android:fillColor="#FFFFFF22"
         android:pathData="M38,64 C38,66 41,67 46,67 C48,67 48,64 46,63.5 C42,63 38,63 38,64 Z" />
 
-    <!-- Stink wisp 1 -->
+    <!-- Stink wisp 1 (stroke only, transparent fill so the open curve draws as a line) -->
     <path
-        android:fillColor="#6B7280"
+        android:fillColor="#00000000"
         android:strokeColor="#6B7280"
         android:strokeWidth="2"
+        android:strokeLineCap="round"
         android:pathData="M44,44 C42,40 48,36 46,32 C44,28 50,24 48,20" />
 
     <!-- Stink wisp 2 -->
     <path
-        android:fillColor="#6B7280"
+        android:fillColor="#00000000"
         android:strokeColor="#6B7280"
         android:strokeWidth="2"
+        android:strokeLineCap="round"
         android:pathData="M64,44 C66,40 60,36 62,32 C64,28 58,24 60,20" />
 </vector>
