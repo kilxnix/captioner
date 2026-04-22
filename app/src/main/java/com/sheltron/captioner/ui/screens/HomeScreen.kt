@@ -98,6 +98,24 @@ fun HomeScreen(
         )
     }
 
+    // Track battery-optimization exemption. Needed so long recordings and the
+    // Whisper polish job aren't killed when the screen locks.
+    fun batteryOptExempt(): Boolean {
+        val pm = context.getSystemService(PowerManager::class.java)
+        return pm?.isIgnoringBatteryOptimizations(context.packageName) ?: true
+    }
+    var batteryOk by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(batteryOptExempt()) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                batteryOk = batteryOptExempt()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val micLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> micGranted = granted }
@@ -174,6 +192,24 @@ fun HomeScreen(
                         body = "Required so Android keeps the recording service alive in the background.",
                         cta = "Grant notifications",
                         onClick = { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                    )
+                    !batteryOk -> PermissionBlock(
+                        icon = { Icon(Icons.Outlined.Mic, null, tint = Accent) },
+                        title = "Allow background use",
+                        body = "Needed so long recordings and the Whisper transcript polish don't get killed when the screen locks.",
+                        cta = "Allow background",
+                        onClick = {
+                            val intent = Intent(
+                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                            runCatching { context.startActivity(intent) }
+                                .onFailure {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                    )
+                                }
+                        }
                     )
                     needsVoskModel && modelState is CaptionerViewModel.ModelState.Unknown -> ModelBlock(
                         title = "Voice model needed",

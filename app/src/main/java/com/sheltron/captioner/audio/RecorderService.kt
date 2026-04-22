@@ -47,7 +47,16 @@ class RecorderService : Service() {
         object Idle : ServiceState()
         object Starting : ServiceState()
         data class Recording(val sessionId: Long, val startedAt: Long) : ServiceState()
+        /** Post-recording Whisper polish running inside the foreground service. */
+        data class Polishing(val sessionId: Long, val phase: String) : ServiceState()
         data class Error(val message: String) : ServiceState()
+    }
+
+    sealed class PolishUiState {
+        object Idle : PolishUiState()
+        data class Running(val phase: String) : PolishUiState()
+        data class Done(val segments: Int) : PolishUiState()
+        data class Failed(val message: String) : PolishUiState()
     }
 
     data class LiveText(val partial: String, val finals: List<String>) {
@@ -57,6 +66,8 @@ class RecorderService : Service() {
     companion object {
         const val ACTION_START = "com.sheltron.captioner.START"
         const val ACTION_STOP = "com.sheltron.captioner.STOP"
+        const val ACTION_POLISH = "com.sheltron.captioner.POLISH"
+        const val EXTRA_SESSION_ID = "session_id"
         const val CHANNEL_ID = "captioner_recording"
         const val NOTIFICATION_ID = 1001
 
@@ -65,6 +76,10 @@ class RecorderService : Service() {
 
         private val _live = MutableStateFlow(LiveText.Empty)
         val live: StateFlow<LiveText> = _live.asStateFlow()
+
+        /** Shared polish status; updated from the service so UI survives VM lifecycle. */
+        private val _polish = MutableStateFlow<PolishUiState>(PolishUiState.Idle)
+        val polish: StateFlow<PolishUiState> = _polish.asStateFlow()
 
         fun start(context: Context) {
             val intent = Intent(context, RecorderService::class.java).apply { action = ACTION_START }
@@ -75,6 +90,17 @@ class RecorderService : Service() {
             val intent = Intent(context, RecorderService::class.java).apply { action = ACTION_STOP }
             context.startService(intent)
         }
+
+        /** Kick off a Whisper polish as a foreground service so it survives backgrounding. */
+        fun polish(context: Context, sessionId: Long) {
+            val intent = Intent(context, RecorderService::class.java).apply {
+                action = ACTION_POLISH
+                putExtra(EXTRA_SESSION_ID, sessionId)
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun clearPolishResult() { _polish.value = PolishUiState.Idle }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -88,9 +114,15 @@ class RecorderService : Service() {
         when (intent?.action) {
             ACTION_START -> startCapture()
             ACTION_STOP -> stopCapture()
+            ACTION_POLISH -> {
+                val sid = intent.getLongExtra(EXTRA_SESSION_ID, -1L)
+                if (sid > 0) startPolish(sid)
+            }
         }
         return START_NOT_STICKY
     }
+
+    private var polishJob: Job? = null
 
     override fun onDestroy() {
         captureJob?.cancel()
@@ -291,17 +323,106 @@ class RecorderService : Service() {
     }
 
     private fun stopCapture() {
-        val wasRecording = _state.value is ServiceState.Recording
+        val current = _state.value
+        val wasRecording = current is ServiceState.Recording
+        val recordedSessionId = (current as? ServiceState.Recording)?.sessionId
         captureJob?.cancel()
         captureJob = null
         _live.value = LiveText.Empty
-        _state.value = ServiceState.Idle
-        if (wasRecording) {
-            val settings = com.sheltron.captioner.settings.SettingsStore(applicationContext)
-            if (settings.recordingSoundsEnabled) SoundEffects.playStop()
+
+        val settings = com.sheltron.captioner.settings.SettingsStore(applicationContext)
+        if (wasRecording && settings.recordingSoundsEnabled) SoundEffects.playStop()
+
+        // Auto-polish with Whisper inline: same process, still in foreground, survives
+        // the user backgrounding the app mid-transcription.
+        val shouldAutoPolish = wasRecording &&
+            recordedSessionId != null &&
+            settings.engine == com.sheltron.captioner.settings.SettingsStore.Engine.VOSK &&
+            WhisperModelManager.isReady(applicationContext) &&
+            WhisperCpp.isLoadable()
+
+        if (shouldAutoPolish && recordedSessionId != null) {
+            // Hand off directly to the polish pipeline without ever going Idle.
+            launchPolish(recordedSessionId)
+        } else {
+            _state.value = ServiceState.Idle
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+    }
+
+    private fun startPolish(sessionId: Long) {
+        // Ignore a fresh polish request while a recording is still active — the stop
+        // flow will chain into polish naturally.
+        val s = _state.value
+        if (s is ServiceState.Recording || s is ServiceState.Starting) return
+        if (s is ServiceState.Polishing) return
+        launchPolish(sessionId)
+    }
+
+    private fun launchPolish(sessionId: Long) {
+        _state.value = ServiceState.Polishing(sessionId, "Decoding audio")
+        _polish.value = PolishUiState.Running("Decoding audio")
+        startForegroundSafely(buildNotification("Polishing transcript…"))
+        polishJob = scope.launch {
+            try {
+                val count = runPolish(sessionId) { phase ->
+                    _state.value = ServiceState.Polishing(sessionId, phase)
+                    _polish.value = PolishUiState.Running(phase)
+                    startForegroundSafely(buildNotification("Polishing · $phase"))
+                }
+                _polish.value = PolishUiState.Done(count)
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                _polish.value = PolishUiState.Failed("Polish cancelled")
+                throw kotlinx.coroutines.CancellationException()
+            } catch (t: Throwable) {
+                _polish.value = PolishUiState.Failed(
+                    "${t.javaClass.simpleName}: ${t.message ?: ""}".trim()
+                )
+            } finally {
+                _state.value = ServiceState.Idle
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+    }
+
+    /** Runs whisper.cpp on the session's saved .m4a and replaces the transcript lines. */
+    private suspend fun runPolish(
+        sessionId: Long,
+        onPhase: (String) -> Unit
+    ): Int = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        if (!WhisperModelManager.isReady(applicationContext))
+            throw IllegalStateException("Whisper model not downloaded")
+        if (!WhisperCpp.isLoadable())
+            throw IllegalStateException("whisperjni native lib failed to load")
+
+        val audio = AudioPaths.sessionAudio(applicationContext, sessionId)
+        if (!audio.exists() || audio.length() == 0L)
+            throw IllegalStateException("No audio file for session $sessionId")
+
+        onPhase("Decoding audio")
+        val pcm = AudioDecoder.decodeToFloat16k(audio)
+        if (pcm.isEmpty()) throw IllegalStateException("Couldn't decode audio")
+
+        onPhase("Loading Whisper")
+        val whisper = WhisperCpp.fromFile(WhisperModelManager.modelFile(applicationContext).absolutePath)
+            ?: throw IllegalStateException("Whisper failed to load")
+
+        val segments = try {
+            onPhase("Transcribing (slow part)")
+            whisper.transcribe(pcm)
+        } finally {
+            whisper.close()
+        }
+
+        onPhase("Replacing transcript")
+        val repo = (applicationContext as CaptionerApp).repository
+        val newLines = segments
+            .filter { it.text.isNotBlank() }
+            .map { it.startMs to it.text.trim() }
+        repo.replaceLines(sessionId, newLines)
+        newLines.size
     }
 
     private fun fail(message: String) {
@@ -351,9 +472,16 @@ class RecorderService : Service() {
             .build()
     }
 
-    private fun startForegroundSafely(notification: Notification) {
+    /** Default type matches the current service state — mic for recording, dataSync for polish. */
+    private fun startForegroundSafely(
+        notification: Notification,
+        type: Int = when (_state.value) {
+            is ServiceState.Polishing -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            else -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
+    ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            startForeground(NOTIFICATION_ID, notification, type)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }

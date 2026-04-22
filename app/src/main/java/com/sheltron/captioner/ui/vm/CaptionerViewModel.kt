@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -68,31 +69,10 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
     private val _extractionState = MutableStateFlow<ExtractionState>(ExtractionState.Idle)
     val extractionState: StateFlow<ExtractionState> = _extractionState.asStateFlow()
 
-    init {
-        // Auto-polish with Whisper after a Vosk recording finishes (if the Whisper model
-        // is downloaded). The user doesn't have to tap Polish manually to get a clean
-        // transcript — it runs in the background as soon as the mic releases.
-        viewModelScope.launch {
-            var lastRecorded: Long? = null
-            serviceState.collect { s ->
-                when (s) {
-                    is RecorderService.ServiceState.Recording -> lastRecorded = s.sessionId
-                    is RecorderService.ServiceState.Idle -> {
-                        val sid = lastRecorded
-                        lastRecorded = null
-                        if (sid != null &&
-                            settings.engine == SettingsStore.Engine.VOSK &&
-                            WhisperModelManager.isReady(getApplication()) &&
-                            _polishState.value !is PolishState.Running
-                        ) {
-                            polishWithWhisper(sid)
-                        }
-                    }
-                    else -> Unit
-                }
-            }
-        }
-    }
+    // Auto-polish is now driven by RecorderService itself after the Vosk capture
+    // loop stops — the service stays in the foreground and owns its own scope,
+    // so Whisper survives the user backgrounding the app mid-transcription.
+    // PolishState in this VM just mirrors the service's shared PolishUiState.
 
     fun refreshModelState() {
         _modelState.value = if (ModelManager.isReady(getApplication())) ModelState.Ready
@@ -245,58 +225,25 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
         data class Failed(val message: String) : PolishState()
     }
 
-    private val _polishState = MutableStateFlow<PolishState>(PolishState.Idle)
-    val polishState: StateFlow<PolishState> = _polishState.asStateFlow()
-
-    fun polishWithWhisper(sessionId: Long) {
-        if (_polishState.value is PolishState.Running) return
-        val audio = repo.audioFileFor(sessionId)
-        if (!audio.exists() || audio.length() == 0L) {
-            _polishState.value = PolishState.Failed("No audio file for this session.")
-            return
-        }
-        if (!WhisperModelManager.isReady(getApplication())) {
-            _polishState.value = PolishState.Failed("Whisper model not downloaded. Open Settings.")
-            return
-        }
-        if (!WhisperCpp.isLoadable()) {
-            _polishState.value = PolishState.Failed("Native whisper library not available: ${WhisperCpp.loadErrorMessage()}")
-            return
-        }
-
-        _polishState.value = PolishState.Running("Decoding audio")
-        viewModelScope.launch {
-            try {
-                val pcm = withContext(Dispatchers.IO) { AudioDecoder.decodeToFloat16k(audio) }
-                if (pcm.isEmpty()) {
-                    _polishState.value = PolishState.Failed("Couldn't decode audio.")
-                    return@launch
-                }
-
-                _polishState.value = PolishState.Running("Loading Whisper")
-                val modelPath = WhisperModelManager.modelFile(getApplication()).absolutePath
-                val whisper = withContext(Dispatchers.Default) { WhisperCpp.fromFile(modelPath) }
-                if (whisper == null) {
-                    _polishState.value = PolishState.Failed("Whisper failed to load.")
-                    return@launch
-                }
-
-                _polishState.value = PolishState.Running("Transcribing (this is the slow part)")
-                val segments = withContext(Dispatchers.Default) {
-                    try { whisper.transcribe(pcm) } finally { whisper.close() }
-                }
-
-                _polishState.value = PolishState.Running("Replacing transcript")
-                val newLines = segments
-                    .filter { it.text.isNotBlank() }
-                    .map { it.startMs to it.text.trim() }
-                repo.replaceLines(sessionId, newLines)
-                _polishState.value = PolishState.Done(newLines.size)
-            } catch (t: Throwable) {
-                _polishState.value = PolishState.Failed("${t.javaClass.simpleName}: ${t.message ?: ""}")
+    /** Mirrors the service-owned polish flow so UI doesn't need to know about two sources. */
+    val polishState: StateFlow<PolishState> = RecorderService.polish
+        .map { s ->
+            when (s) {
+                RecorderService.PolishUiState.Idle -> PolishState.Idle
+                is RecorderService.PolishUiState.Running -> PolishState.Running(s.phase)
+                is RecorderService.PolishUiState.Done -> PolishState.Done(s.segments)
+                is RecorderService.PolishUiState.Failed -> PolishState.Failed(s.message)
             }
         }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, PolishState.Idle)
+
+    fun polishWithWhisper(sessionId: Long) {
+        if (polishState.value is PolishState.Running) return
+        val audio = repo.audioFileFor(sessionId)
+        if (!audio.exists() || audio.length() == 0L) return
+        if (!WhisperModelManager.isReady(getApplication())) return
+        RecorderService.polish(getApplication(), sessionId)
     }
 
-    fun clearPolishState() { _polishState.value = PolishState.Idle }
+    fun clearPolishState() { RecorderService.clearPolishResult() }
 }
