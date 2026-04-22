@@ -68,9 +68,31 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
     private val _extractionState = MutableStateFlow<ExtractionState>(ExtractionState.Idle)
     val extractionState: StateFlow<ExtractionState> = _extractionState.asStateFlow()
 
-    // No init-time work: _gemmaState and _whisperState are declared further down the file
-    // and are still null when a Kotlin init block runs. We compute the initial state
-    // directly in the property initializers below instead.
+    init {
+        // Auto-polish with Whisper after a Vosk recording finishes (if the Whisper model
+        // is downloaded). The user doesn't have to tap Polish manually to get a clean
+        // transcript — it runs in the background as soon as the mic releases.
+        viewModelScope.launch {
+            var lastRecorded: Long? = null
+            serviceState.collect { s ->
+                when (s) {
+                    is RecorderService.ServiceState.Recording -> lastRecorded = s.sessionId
+                    is RecorderService.ServiceState.Idle -> {
+                        val sid = lastRecorded
+                        lastRecorded = null
+                        if (sid != null &&
+                            settings.engine == SettingsStore.Engine.VOSK &&
+                            WhisperModelManager.isReady(getApplication()) &&
+                            _polishState.value !is PolishState.Running
+                        ) {
+                            polishWithWhisper(sid)
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
 
     fun refreshModelState() {
         _modelState.value = if (ModelManager.isReady(getApplication())) ModelState.Ready

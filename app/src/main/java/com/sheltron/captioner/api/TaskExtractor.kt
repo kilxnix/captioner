@@ -22,14 +22,20 @@ object TaskExtractor {
         data class Failed(val message: String) : Result()
     }
 
-    // Concise prompt — Nano is a small model, keep it focused.
-    private const val INSTRUCTIONS = """Extract actionable tasks from the dictation below. Return ONLY a JSON array. No prose, no markdown.
-Each item: {"title": "...", "context": "...", "due": "YYYY-MM-DD" or null, "priority": "low"|"medium"|"high"}.
-- "title": short imperative, under 80 chars.
-- "context": the phrase from the transcript that suggested this task.
-- "due": an ISO date if one was stated (use today's date to resolve words like "Friday"), else null.
-- "priority": medium unless the speaker flagged urgency.
-Skip questions, guesses, idle chatter. If nothing is actionable, return [].
+    // Small on-device model → keep the spec tight and unambiguous.
+    private const val INSTRUCTIONS = """Extract actionable tasks from the transcript below. Return ONLY a JSON array — no prose, no markdown fences.
+
+Each item must be: {"title": "...", "context": "...", "due": "YYYY-MM-DD" or null, "priority": "low"|"medium"|"high"}.
+
+Rules:
+- "title" is a COMPLETE imperative command: starts with a verb, 3-12 words, at most 80 chars. Do not emit fragments that start mid-sentence.
+- "context" is the full phrase the task came from (up to 200 chars).
+- Every task must be UNIQUE — do not emit two items with the same or similar title. If the same action is mentioned more than once, emit it ONLY once.
+- Skip questions, hypotheticals, commentary about the app itself, and anything that isn't a commitment or instruction.
+- "due" is an ISO date if a specific day was stated (resolve relative days from today's date). Otherwise null.
+- "priority" is medium unless urgency is explicit.
+
+If nothing is actionable, return [].
 
 Today: %TODAY%
 Transcript:
@@ -79,10 +85,21 @@ Transcript:
         }
 
         val tasks = mutableListOf<Task>()
+        val seenNormalized = mutableSetOf<String>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            val title = obj.optString("title").trim()
-            if (title.isBlank()) continue
+            val title = obj.optString("title").trim().trimEnd('.', ',', ';')
+            if (!isValidTaskTitle(title)) continue
+
+            // Dedup near-duplicates (case-insensitive, punctuation-stripped, first 40 chars).
+            val norm = normalizeForDedup(title)
+            if (!seenNormalized.add(norm)) continue
+            // Also skip if this title is clearly a substring of something we already kept
+            // (guards against "that the slides are clear" vs "make sure that the slides are clear").
+            if (seenNormalized.any { it != norm && (it.contains(norm) || norm.contains(it)) && it.length >= 15 }) {
+                continue
+            }
+
             val ctx = obj.optString("context").trim().ifBlank {
                 obj.optString("context_snippet").trim()
             }
@@ -113,6 +130,30 @@ Transcript:
         }
         return Result.Ok(tasks)
     }
+
+    /** Accepts only imperative-looking titles with enough substance to be useful. */
+    private fun isValidTaskTitle(title: String): Boolean {
+        if (title.length < 6) return false
+        val words = title.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.size < 3) return false
+        // Reject fragments that start mid-sentence (common small-model failure mode).
+        val firstWord = words.first().lowercase().trimStart('"', '\'')
+        if (firstWord in fragmentStarts) return false
+        return true
+    }
+
+    private val fragmentStarts = setOf(
+        "that", "which", "and", "or", "but", "so", "because",
+        "when", "while", "if", "then", "than", "of", "for",
+        "to"  // "to X" alone is often cut from "need to X"
+    )
+
+    private fun normalizeForDedup(s: String): String =
+        s.lowercase()
+            .replace(Regex("[^a-z0-9 ]"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(40)
 
     private fun isoDate(ms: Long): String {
         val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getDefault() }

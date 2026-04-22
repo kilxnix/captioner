@@ -13,14 +13,17 @@ import java.net.URL
 /** Downloads and tracks the quantized Whisper model used for post-recording polish. */
 object WhisperModelManager {
 
-    const val MODEL_FILE = "ggml-base.en-q5_1.bin"
+    // ggml-small.en-q5_1 — ~190 MB. Noticeably better than base.en on connected /
+    // mumbled / accented speech, still small enough to live in filesDir.
+    const val MODEL_FILE = "ggml-small.en-q5_1.bin"
+    /** Old base.en file from prior builds — deleted when the new model lands. */
+    private const val LEGACY_MODEL_FILE = "ggml-base.en-q5_1.bin"
     private val URLS = listOf(
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin"
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin"
     )
     private const val USER_AGENT = "ColesLog/1.0 (Android)"
     private const val MAX_REDIRECTS = 5
-    // ggml-base.en-q5_1 is ~60 MB; guard against truncated files.
-    private const val MIN_BYTES = 40L * 1024 * 1024
+    private const val MIN_BYTES = 150L * 1024 * 1024
 
     fun modelFile(context: Context): File =
         File(context.filesDir, "models/$MODEL_FILE").also { it.parentFile?.mkdirs() }
@@ -41,6 +44,8 @@ object WhisperModelManager {
 
         val dest = modelFile(context)
         if (dest.exists()) dest.delete()
+        // Clean up the smaller base.en model if it's still sitting in files from a prior build.
+        runCatching { File(context.filesDir, "models/$LEGACY_MODEL_FILE").delete() }
 
         var lastError: String? = null
         for (url in URLS) {
