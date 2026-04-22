@@ -24,7 +24,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -35,10 +38,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.sheltron.captioner.api.GemmaModelManager
 import com.sheltron.captioner.settings.SettingsStore
 import com.sheltron.captioner.ui.theme.Accent
 import com.sheltron.captioner.ui.theme.BoneDim
@@ -53,10 +62,16 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val store = vm.settings
+    val context = LocalContext.current
     var selectedEngine by remember { mutableStateOf(store.engine) }
     var soundsOn by remember { mutableStateOf(store.recordingSoundsEnabled) }
+    var hfToken by remember { mutableStateOf(store.hfToken ?: "") }
     val gemmaState by vm.gemmaState.collectAsState()
     val whisperState by vm.whisperState.collectAsState()
+
+    val openUrl: (String) -> Unit = { url ->
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
 
     Column(
         modifier = Modifier
@@ -130,11 +145,50 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "Runs fully on-device via MediaPipe — no network after the one-time download, no API key. ~550 MB.",
+                        "Runs fully on-device via MediaPipe. ~550 MB one-time download. " +
+                        "The Gemma model is license-gated on Hugging Face — you'll need " +
+                        "an HF account and an access token.",
                         style = MaterialTheme.typography.bodySmall,
                         color = BoneMuted,
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
                     )
+
+                    // Step 1 + 2 explainer links.
+                    Text("1. Accept the Gemma license on Hugging Face",
+                         style = MaterialTheme.typography.bodySmall,
+                         color = Accent,
+                         modifier = Modifier
+                             .clickable { openUrl(GemmaModelManager.HF_GEMMA_LICENSE_URL) }
+                             .padding(vertical = 4.dp))
+                    Text("2. Create a (read-only) HF access token",
+                         style = MaterialTheme.typography.bodySmall,
+                         color = Accent,
+                         modifier = Modifier
+                             .clickable { openUrl(GemmaModelManager.HF_TOKEN_URL) }
+                             .padding(vertical = 4.dp))
+                    Spacer(Modifier.size(8.dp))
+
+                    OutlinedTextField(
+                        value = hfToken,
+                        onValueChange = {
+                            hfToken = it
+                            store.hfToken = it
+                        },
+                        placeholder = { Text("hf_…", color = BoneDim) },
+                        label = { Text("Hugging Face token", color = BoneMuted) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Accent,
+                            unfocusedBorderColor = BoneDim,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            cursorColor = Accent
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.size(12.dp))
 
                     when (val s = gemmaState) {
                         is CaptionerViewModel.GemmaState.Ready -> {
@@ -157,6 +211,25 @@ fun SettingsScreen(
                                      color = BoneMuted)
                             }
                         }
+                        is CaptionerViewModel.GemmaState.NeedsAuth -> {
+                            Text(
+                                "Hugging Face rejected the download. Make sure you accepted " +
+                                "the Gemma license on the model page AND that your token above " +
+                                "is valid (read scope is enough).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BoneDim
+                            )
+                            Spacer(Modifier.size(10.dp))
+                            Button(
+                                onClick = { vm.downloadGemma() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                            ) {
+                                Icon(Icons.Outlined.Download, null, tint = Color.Black,
+                                     modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text("Retry", color = Color.Black)
+                            }
+                        }
                         is CaptionerViewModel.GemmaState.Failed -> {
                             Text("Download failed: ${s.message}",
                                  style = MaterialTheme.typography.bodySmall,
@@ -175,6 +248,7 @@ fun SettingsScreen(
                         else -> {
                             Button(
                                 onClick = { vm.downloadGemma() },
+                                enabled = hfToken.isNotBlank(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Accent)
                             ) {
                                 Icon(Icons.Outlined.Download, null, tint = Color.Black,

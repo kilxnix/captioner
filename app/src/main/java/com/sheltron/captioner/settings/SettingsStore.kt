@@ -48,8 +48,14 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_SOUNDS, true)
         set(value) { prefs.edit().putBoolean(KEY_SOUNDS, value).apply() }
 
+    /** Hugging Face access token, used only to download the license-gated Gemma model. */
+    var hfToken: String?
+        get() = prefs.getString(KEY_HF, null)?.takeIf { it.isNotBlank() }
+        set(value) { prefs.edit().putString(KEY_HF, value?.trim()).apply() }
+
     companion object {
         private const val KEY_ENGINE = "transcription_engine"
         private const val KEY_SOUNDS = "recording_sounds_enabled"
+        private const val KEY_HF = "hf_token"
     }
 }

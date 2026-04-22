@@ -11,16 +11,21 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Downloads and tracks the Gemma on-device LLM for task extraction.
- * Model ships as a MediaPipe .task bundle. ~550 MB one-time download.
+ * Downloads and tracks the Gemma on-device LLM used for task extraction.
+ *
+ * The litert-community Gemma 3 1B repo on Hugging Face is license-gated:
+ * the user must first accept the Gemma license on huggingface.co and provide
+ * a Hugging Face access token, which we send as a Bearer header on the
+ * download request.
  */
 object GemmaModelManager {
 
     const val MODEL_FILE = "gemma3-1b-it-int4.task"
-    // Hugging Face mirror for the MediaPipe-packaged Gemma 3 1B IT int4 model.
+    // litert-community publishes the MediaPipe-ready .task bundle behind a gate.
+    const val HF_GEMMA_LICENSE_URL = "https://huggingface.co/litert-community/Gemma3-1B-IT"
+    const val HF_TOKEN_URL = "https://huggingface.co/settings/tokens"
     private val URLS = listOf(
-        "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task",
-        "https://huggingface.co/litert-community/Gemma-3-1B-IT/resolve/main/gemma3-1b-it-int4.task"
+        "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task"
     )
     private const val USER_AGENT = "ColesLog/1.0 (Android)"
     private const val MAX_REDIRECTS = 5
@@ -28,19 +33,23 @@ object GemmaModelManager {
     fun modelFile(context: Context): File =
         File(context.filesDir, "models/$MODEL_FILE").also { it.parentFile?.mkdirs() }
 
+    // Gemma 3 1B int4 ships around 529 MB; require ≥ 400 MB to reject truncated downloads.
+    private const val MIN_VALID_BYTES = 400L * 1024 * 1024
+
     fun isReady(context: Context): Boolean {
         val f = modelFile(context)
-        // Guard against truncated files from an interrupted download by requiring >100MB.
-        return f.exists() && f.length() > 100L * 1024 * 1024
+        return f.exists() && f.length() > MIN_VALID_BYTES
     }
 
     sealed class Event {
         data class Progress(val percent: Int, val bytesDone: Long, val bytesTotal: Long) : Event()
         object Done : Event()
         data class Failed(val message: String) : Event()
+        /** The HF repo returned 401/403 — user needs to accept the license and provide a token. */
+        object NeedsLicenseAcceptance : Event()
     }
 
-    fun download(context: Context): Flow<Event> = flow {
+    fun download(context: Context, hfToken: String?): Flow<Event> = flow {
         if (isReady(context)) {
             emit(Event.Done)
             return@flow
@@ -50,38 +59,52 @@ object GemmaModelManager {
         if (dest.exists()) dest.delete()
 
         var lastError: String? = null
+        var sawAuth = false
         for (url in URLS) {
             try {
-                downloadFromUrl(url, dest) { pct, done, total ->
+                downloadFromUrl(url, dest, hfToken) { pct, done, total ->
                     emit(Event.Progress(pct, done, total))
                 }
-                if (dest.exists() && dest.length() > 100L * 1024 * 1024) {
+                if (dest.exists() && dest.length() > MIN_VALID_BYTES) {
                     emit(Event.Done)
                     return@flow
                 }
                 lastError = "download: incomplete file from $url"
+            } catch (e: HttpAuthException) {
+                sawAuth = true
+                lastError = "auth: HTTP ${e.code} — license acceptance or token missing"
+                if (dest.exists()) dest.delete()
             } catch (t: Throwable) {
                 lastError = "${phaseOf(t)}: ${t.javaClass.simpleName} ${t.message ?: ""}".trim()
                 if (dest.exists()) dest.delete()
             }
         }
-        emit(Event.Failed(lastError ?: "unknown failure"))
+        if (sawAuth) emit(Event.NeedsLicenseAcceptance)
+        else emit(Event.Failed(lastError ?: "unknown failure"))
     }.flowOn(Dispatchers.IO)
+
+    private class HttpAuthException(val code: Int) : java.io.IOException("HTTP $code")
 
     private suspend fun downloadFromUrl(
         initialUrl: String,
         dest: File,
+        hfToken: String?,
         onProgress: suspend (Int, Long, Long) -> Unit
     ) {
         var currentUrl = initialUrl
         var redirects = 0
         while (true) {
+            val isHuggingFace = currentUrl.contains("huggingface.co")
             val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 30_000
                 readTimeout = 60_000
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", USER_AGENT)
                 setRequestProperty("Accept", "*/*")
+                // Only send the bearer on HF-owned hosts; after a 302 to a CDN we drop it.
+                if (isHuggingFace && !hfToken.isNullOrBlank()) {
+                    setRequestProperty("Authorization", "Bearer $hfToken")
+                }
             }
             try {
                 conn.connect()
@@ -93,6 +116,7 @@ object GemmaModelManager {
                     currentUrl = URL(URL(currentUrl), location).toString()
                     continue
                 }
+                if (code == 401 || code == 403) throw HttpAuthException(code)
                 if (code !in 200..299) throw java.io.IOException("HTTP $code")
 
                 val total = conn.contentLengthLong.coerceAtLeast(-1L)

@@ -156,6 +156,8 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
         object Ready : GemmaState()
         data class Downloading(val percent: Int) : GemmaState()
         data class Failed(val message: String) : GemmaState()
+        /** HF said 401/403 — user needs to accept the Gemma license and/or provide a token. */
+        object NeedsAuth : GemmaState()
     }
 
     private val _gemmaState = MutableStateFlow<GemmaState>(
@@ -171,11 +173,12 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
     fun downloadGemma() {
         if (_gemmaState.value is GemmaState.Downloading) return
         viewModelScope.launch {
-            GemmaModelManager.download(getApplication()).collect { event ->
+            GemmaModelManager.download(getApplication(), settings.hfToken).collect { event ->
                 _gemmaState.value = when (event) {
                     is GemmaModelManager.Event.Progress -> GemmaState.Downloading(event.percent)
                     GemmaModelManager.Event.Done -> GemmaState.Ready
                     is GemmaModelManager.Event.Failed -> GemmaState.Failed(event.message)
+                    GemmaModelManager.Event.NeedsLicenseAcceptance -> GemmaState.NeedsAuth
                 }
             }
         }
