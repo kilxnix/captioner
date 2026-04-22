@@ -85,9 +85,10 @@ fun LiveScreen(
             is RecorderService.ServiceState.Starting,
             is RecorderService.ServiceState.Recording -> hasRecorded = true
             is RecorderService.ServiceState.Idle,
-            is RecorderService.ServiceState.Error -> {
-                // Only auto-pop after we've actually started — otherwise we bounce back
-                // immediately on initial composition before the service transitions to Starting.
+            is RecorderService.ServiceState.Error,
+            is RecorderService.ServiceState.Polishing -> {
+                // Polishing means the mic has been released and whisper is running in the
+                // background — the user has no reason to stay on LiveScreen, just pop back.
                 if (hasRecorded) goBackOnce()
             }
         }
