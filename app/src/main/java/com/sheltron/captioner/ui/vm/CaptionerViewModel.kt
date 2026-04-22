@@ -39,6 +39,12 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
     val serviceState = RecorderService.state
     val live = RecorderService.live
 
+    /** Page index the HomePager should animate to on next recomposition. Null = no request. */
+    private val _pendingPagerPage = MutableStateFlow<Int?>(null)
+    val pendingPagerPage: StateFlow<Int?> = _pendingPagerPage.asStateFlow()
+    fun requestPagerPage(page: Int) { _pendingPagerPage.value = page }
+    fun clearPendingPagerPage() { _pendingPagerPage.value = null }
+
     sealed class ModelState {
         object Unknown : ModelState()
         object Ready : ModelState()

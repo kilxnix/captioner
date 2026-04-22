@@ -74,6 +74,17 @@ fun SessionDetailScreen(
     val sessionTasks by vm.tasksForSession(sessionId).collectAsState(initial = emptyList())
     val extractionState by vm.extractionState.collectAsState()
     val polishState by vm.polishState.collectAsState()
+
+    // Auto-jump to Tasks after a successful extraction so the user isn't stuck
+    // swiping or hunting for the Tasks tab every time.
+    LaunchedEffect(extractionState) {
+        val s = extractionState
+        if (s is CaptionerViewModel.ExtractionState.Done && s.count > 0) {
+            kotlinx.coroutines.delay(1200)
+            vm.clearExtractionState()
+            onOpenTasks()
+        }
+    }
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
 
@@ -196,7 +207,12 @@ fun SessionDetailScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp)
                 .clickable(enabled = extractionState !is CaptionerViewModel.ExtractionState.Running) {
-                    vm.extractTasks(sessionId)
+                    // If there's already a completed extraction with tasks, tapping the row
+                    // should take the user to Tasks instead of re-running extraction.
+                    val hasExtractedTasks = extractionState is CaptionerViewModel.ExtractionState.Done &&
+                                            sessionTasks.isNotEmpty()
+                    if (hasExtractedTasks) onOpenTasks()
+                    else vm.extractTasks(sessionId)
                 }
         ) {
             Row(
@@ -216,7 +232,8 @@ fun SessionDetailScreen(
                         is CaptionerViewModel.ExtractionState.Running ->
                             "Extracting tasks…" to "${s.phase}…"
                         is CaptionerViewModel.ExtractionState.Done ->
-                            (if (s.count == 0) "No tasks found" else "Extracted ${s.count} task${if (s.count == 1) "" else "s"}") to "Swipe to Tasks to review."
+                            (if (s.count == 0) "No tasks found" else "Extracted ${s.count} task${if (s.count == 1) "" else "s"}") to
+                                if (s.count == 0) "Tap to try again." else "Tap to view in Tasks."
                         is CaptionerViewModel.ExtractionState.Failed ->
                             "Extraction failed" to s.message
                         else ->
@@ -254,6 +271,13 @@ fun SessionDetailScreen(
 
         Spacer(Modifier.height(12.dp))
 
+        // Mini player sits up top where you can reach it with your thumb.
+        if (controller != null) {
+            MiniPlayer(state = playState, onToggle = { controller.togglePlayPause() },
+                       onSeek = { controller.seekTo(it) })
+            Spacer(Modifier.height(8.dp))
+        }
+
         Box(modifier = Modifier.weight(1f)) {
             if (lines.isEmpty()) {
                 Box(
@@ -265,8 +289,7 @@ fun SessionDetailScreen(
             } else {
                 LazyColumn(
                     contentPadding = PaddingValues(
-                        start = 24.dp, end = 24.dp, top = 8.dp,
-                        bottom = if (controller != null) 96.dp else 8.dp
+                        start = 24.dp, end = 24.dp, top = 8.dp, bottom = 8.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -293,11 +316,6 @@ fun SessionDetailScreen(
                     }
                 }
             }
-        }
-
-        if (controller != null) {
-            MiniPlayer(state = playState, onToggle = { controller.togglePlayPause() },
-                       onSeek = { controller.seekTo(it) })
         }
     }
 

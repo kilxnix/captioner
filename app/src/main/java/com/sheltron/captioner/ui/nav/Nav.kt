@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -81,7 +83,9 @@ fun CaptionerNav() {
                 sessionId = id,
                 onBack = { nav.popBackStack() },
                 onOpenTasks = {
-                    // Pop to home, which will show whichever pager page was last active.
+                    // Request the Tasks page first, then pop back — HomePager picks up the
+                    // request and animates the scroll on arrival.
+                    vm.requestPagerPage(1)
                     nav.popBackStack(Routes.HOME, inclusive = false)
                 },
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) }
@@ -103,6 +107,15 @@ private fun HomePager(
 ) {
     val pagerState = rememberPagerState(initialPage = 0) { 2 }
     val scope = rememberCoroutineScope()
+
+    // Honor pager-jump requests fired from elsewhere (e.g. SessionDetail's Checklist icon
+    // after extracting tasks — land on the Tasks page instead of popping back to Home).
+    val pendingPage by vm.pendingPagerPage.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(pendingPage) {
+        val target = pendingPage ?: return@LaunchedEffect
+        pagerState.animateScrollToPage(target.coerceIn(0, 1))
+        vm.clearPendingPagerPage()
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         HorizontalPager(
