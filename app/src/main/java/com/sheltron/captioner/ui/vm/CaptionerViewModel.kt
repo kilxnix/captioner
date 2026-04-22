@@ -47,7 +47,9 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
         data class Failed(val message: String) : ModelState()
     }
 
-    private val _modelState = MutableStateFlow<ModelState>(ModelState.Unknown)
+    private val _modelState = MutableStateFlow<ModelState>(
+        if (ModelManager.isReady(app)) ModelState.Ready else ModelState.Unknown
+    )
     val modelState: StateFlow<ModelState> = _modelState.asStateFlow()
 
     sealed class ExtractionState {
@@ -60,11 +62,9 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
     private val _extractionState = MutableStateFlow<ExtractionState>(ExtractionState.Idle)
     val extractionState: StateFlow<ExtractionState> = _extractionState.asStateFlow()
 
-    init {
-        refreshModelState()
-        refreshGemmaState()
-        refreshWhisperState()
-    }
+    // No init-time work: _gemmaState and _whisperState are declared further down the file
+    // and are still null when a Kotlin init block runs. We compute the initial state
+    // directly in the property initializers below instead.
 
     fun refreshModelState() {
         _modelState.value = if (ModelManager.isReady(getApplication())) ModelState.Ready
@@ -152,7 +152,9 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
         data class Failed(val message: String) : GemmaState()
     }
 
-    private val _gemmaState = MutableStateFlow<GemmaState>(GemmaState.Unknown)
+    private val _gemmaState = MutableStateFlow<GemmaState>(
+        if (GemmaModelManager.isReady(app)) GemmaState.Ready else GemmaState.Unknown
+    )
     val gemmaState: StateFlow<GemmaState> = _gemmaState.asStateFlow()
 
     fun refreshGemmaState() {
@@ -182,7 +184,9 @@ class CaptionerViewModel(app: Application) : AndroidViewModel(app) {
         data class Failed(val message: String) : WhisperModelState()
     }
 
-    private val _whisperState = MutableStateFlow<WhisperModelState>(WhisperModelState.Unknown)
+    private val _whisperState = MutableStateFlow<WhisperModelState>(
+        if (WhisperModelManager.isReady(app)) WhisperModelState.Ready else WhisperModelState.Unknown
+    )
     val whisperState: StateFlow<WhisperModelState> = _whisperState.asStateFlow()
 
     fun refreshWhisperState() {
