@@ -13,17 +13,18 @@ import java.net.URL
 /** Downloads and tracks the quantized Whisper model used for post-recording polish. */
 object WhisperModelManager {
 
-    // ggml-small.en-q5_1 — ~190 MB. Noticeably better than base.en on connected /
-    // mumbled / accented speech, still small enough to live in filesDir.
-    const val MODEL_FILE = "ggml-small.en-q5_1.bin"
-    /** Old base.en file from prior builds — deleted when the new model lands. */
-    private const val LEGACY_MODEL_FILE = "ggml-base.en-q5_1.bin"
+    // ggml-base.en-q5_1 — ~60 MB. Roughly 2-3x faster than small.en with only a
+    // modest accuracy hit on short-to-medium clips; a much better fit for on-device
+    // polish where the user is waiting on a phone CPU.
+    const val MODEL_FILE = "ggml-base.en-q5_1.bin"
+    /** Old small.en file from prior builds — deleted when a fresh download lands. */
+    private const val LEGACY_MODEL_FILE = "ggml-small.en-q5_1.bin"
     private val URLS = listOf(
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin"
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin"
     )
     private const val USER_AGENT = "ColesLog/1.0 (Android)"
     private const val MAX_REDIRECTS = 5
-    private const val MIN_BYTES = 150L * 1024 * 1024
+    private const val MIN_BYTES = 40L * 1024 * 1024
 
     fun modelFile(context: Context): File =
         File(context.filesDir, "models/$MODEL_FILE").also { it.parentFile?.mkdirs() }
