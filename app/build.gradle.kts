@@ -23,8 +23,12 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags += listOf("-std=c++17", "-fexceptions", "-frtti")
-                arguments += listOf("-DANDROID_STL=c++_shared")
+                cppFlags += listOf("-std=c++17", "-fexceptions", "-frtti", "-O3", "-DNDEBUG")
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    // Force release-grade native build so whisper isn't crippled in debug APKs.
+                    "-DCMAKE_BUILD_TYPE=Release"
+                )
             }
         }
     }

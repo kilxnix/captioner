@@ -51,9 +51,20 @@ object Routes {
 }
 
 @Composable
-fun CaptionerNav() {
+fun CaptionerNav(
+    openSessionOnLaunch: Long? = null,
+    onSessionOpened: () -> Unit = {}
+) {
     val nav = rememberNavController()
     val vm: CaptionerViewModel = viewModel()
+
+    // Deep-link: when the Activity is launched from the "Transcript ready" notification,
+    // we get a session id here. Navigate to it as soon as the NavHost is ready, then clear.
+    androidx.compose.runtime.LaunchedEffect(openSessionOnLaunch) {
+        val id = openSessionOnLaunch ?: return@LaunchedEffect
+        nav.navigate(Routes.session(id))
+        onSessionOpened()
+    }
 
     NavHost(navController = nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {

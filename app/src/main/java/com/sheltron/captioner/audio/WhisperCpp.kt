@@ -10,7 +10,7 @@ class WhisperCpp private constructor(private val ctxPtr: Long) : Closeable {
 
     data class Segment(val startMs: Long, val endMs: Long, val text: String)
 
-    fun transcribe(audio: FloatArray, threads: Int = 4): List<Segment> {
+    fun transcribe(audio: FloatArray, threads: Int = defaultThreads()): List<Segment> {
         if (ctxPtr == 0L || audio.isEmpty()) return emptyList()
         val raw = nativeTranscribe(ctxPtr, audio, threads) ?: return emptyList()
         return raw.mapNotNull { line ->
@@ -29,6 +29,12 @@ class WhisperCpp private constructor(private val ctxPtr: Long) : Closeable {
     }
 
     companion object {
+        /** Use most of the big cores, but leave one free so the UI / service don't starve. */
+        private fun defaultThreads(): Int {
+            val cores = Runtime.getRuntime().availableProcessors()
+            return (cores - 1).coerceIn(2, 8)
+        }
+
         @Volatile private var loaded = false
         private val loadError: Throwable? by lazy {
             try {

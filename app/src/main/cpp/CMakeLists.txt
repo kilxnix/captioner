@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Whisper is pure CPU math — without -O3 a debug build runs literally 100-1000x slower,
+# which turned a 9-second clip into a 20-minute transcription. Force high optimization
+# for all C/C++ regardless of Android Gradle Plugin's debug/release mode.
+add_compile_options(-O3 -DNDEBUG -ffast-math -fno-finite-math-only)
+
 set(WHISPER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp)
 
 # Turn off all the example apps / server / SDL audio backend / tests.

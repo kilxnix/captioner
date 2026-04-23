@@ -69,7 +69,9 @@ class RecorderService : Service() {
         const val ACTION_POLISH = "com.sheltron.captioner.POLISH"
         const val EXTRA_SESSION_ID = "session_id"
         const val CHANNEL_ID = "captioner_recording"
+        const val RESULTS_CHANNEL_ID = "captioner_results"
         const val NOTIFICATION_ID = 1001
+        const val RESULTS_NOTIFICATION_ID_BASE = 2000
 
         private val _state = MutableStateFlow<ServiceState>(ServiceState.Idle)
         val state: StateFlow<ServiceState> = _state.asStateFlow()
@@ -372,6 +374,7 @@ class RecorderService : Service() {
                     startForegroundSafely(buildNotification("Polishing · $phase"))
                 }
                 _polish.value = PolishUiState.Done(count)
+                postPolishDoneNotification(sessionId, count)
             } catch (_: kotlinx.coroutines.CancellationException) {
                 _polish.value = PolishUiState.Failed("Polish cancelled")
                 throw kotlinx.coroutines.CancellationException()
@@ -439,11 +442,52 @@ class RecorderService : Service() {
                 "Cole's Log recording",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Microphone capture and live captions"
+                description = "Microphone capture, live captions, transcript polish progress"
                 setShowBadge(false)
             }
             manager.createNotificationChannel(ch)
         }
+        if (manager.getNotificationChannel(RESULTS_CHANNEL_ID) == null) {
+            val ch = NotificationChannel(
+                RESULTS_CHANNEL_ID,
+                "Transcript ready",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Fires once when a Whisper polish finishes so you know the session is clean."
+                setShowBadge(true)
+            }
+            manager.createNotificationChannel(ch)
+        }
+    }
+
+    /** One-shot results notification that opens the finished session on tap. */
+    private fun postPolishDoneNotification(sessionId: Long, segments: Int) {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            putExtra(MainActivity.EXTRA_OPEN_SESSION_ID, sessionId)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pending = PendingIntent.getActivity(
+            this,
+            sessionId.toInt(),
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val title = if (segments <= 0) "Transcript polished"
+                    else "Transcript ready · $segments segment${if (segments == 1) "" else "s"}"
+        val notif = NotificationCompat.Builder(this, RESULTS_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText("Tap to open the session.")
+            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        manager.notify(RESULTS_NOTIFICATION_ID_BASE + sessionId.toInt(), notif)
     }
 
     private fun buildNotification(text: String): Notification {
